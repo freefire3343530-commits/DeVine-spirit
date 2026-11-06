@@ -10,6 +10,7 @@ import { ensureAllIndexes } from '../lib/indexes.js';
 import { isCronAuthorized } from '../lib/cronAuth.js';
 import { tgSend } from '../lib/tg.js';
 import { bdTodayKey } from '../lib/dateUtils.js';
+import { setBotWebhook, getBotWebhookInfo, deleteBotWebhook, webhookUrl } from '../lib/webhook.js';
 
 // ===== EDIT HERE =====
 const APP_URL = 'https://de-vine-spirit.vercel.app';
@@ -26,6 +27,11 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 export default async function handler(req, res) {
   if (!isCronAuthorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
   if (req.query?.job === 'setupIndexes') return res.status(200).json({ ok: true, results: await ensureAllIndexes(await getDb()) }); // open in a browser to see which indexes are OK
+  // Webhook admin (open in a browser, add &secret=CRON_SECRET):
+  //   /api/cron?job=setWebhook[&drop=1]   /api/cron?job=webhookInfo   /api/cron?job=deleteWebhook[&drop=1]
+  if (req.query?.job === 'setWebhook') { const r = await setBotWebhook({ dropPending: req.query.drop === '1' }); return res.status(200).json({ ...r, url: webhookUrl() }); }
+  if (req.query?.job === 'webhookInfo') return res.status(200).json(await getBotWebhookInfo());
+  if (req.query?.job === 'deleteWebhook') return res.status(200).json(await deleteBotWebhook(req.query.drop === '1'));
   if (req.query?.job !== 'dailyNotify') return res.status(400).json({ ok: false, error: 'unknown_job' });
 
   const db = await getDb();
@@ -70,4 +76,4 @@ async function runNotify(db, today) {
   }
   await settings.updateOne({ _id: 'dailyNotify' }, { $set: { status: 'done', finishedAt: new Date(), sent, failed } });
   if (process.env.ADMIN_ID) tgSend(process.env.ADMIN_ID, `🔔 <b>Daily notification done</b>\n\n✅ Sent: <b>${sent}</b>\n❌ Failed: <b>${failed}</b>`).catch(() => {});
-                                 }
+}
