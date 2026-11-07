@@ -69,12 +69,7 @@ export default async function handler(req, res) {
       if ((user.promosUsed || []).includes(cleanCode))
         return res.status(200).json({ valid: false, error: 'Already used this promo code.' });
 
-      // checkOnly = just validate, don't redeem yet (before showing an ad).
-      // Note: nothing server-side actually enforces that an ad was shown
-      // between checkOnly and the real redeem call below — a user can call
-      // this endpoint directly with checkOnly:false and skip the ad
-      // entirely. Low stakes (small, capped, one-time-per-user reward) but
-      // flagging it: if the ad-watch is meant to be mandatory, it isn't.
+      // checkOnly = just validate, don't redeem yet.
       if (checkOnly) return res.status(200).json({ valid: true, reward: promo.reward, currency: 'mm' });
 
       // Every promo pays MM$ now (old Gold promos are converted by the migration script).
