@@ -1,13 +1,10 @@
 // FILE PATH: api/farm.js
 // Farming: 6 farms, each pays a fixed MM$ reward once per cycle.
-// Farm 1 is free, farms 2-6 are bought with MM$. Every claim needs one ad (GigaPub / AdsGram).
+// Farm 1 is free, farms 2-6 are bought with MM$.
 import { cyInc, cyMin } from '../lib/cycleStats.js';
-import crypto from 'crypto';
 import { getDb } from '../lib/mongodb.js';
 import { verifyTelegramInit } from '../lib/auth.js';
-import { bdTodayKey } from '../lib/dateUtils.js';
 import { refCheck } from '../lib/refReward.js';
-import { detectBotPattern, lockForBotPattern, AD_CLAIM_HISTORY_KEEP } from '../lib/botGuard.js';
 
 // ===== EDIT HERE: farm settings (50,000 MM$ = $1) =====
 // hours = how often you can claim, reward = MM$ per claim, price = MM$ to buy (0 = free)
@@ -19,19 +16,7 @@ const FARMS = [
   { name: 'Farm 5', hours: 8,  reward: 300, price: 5000 },
   { name: 'Farm 6', hours: 12, reward: 500, price: 12500 },
 ];
-const AD_NETWORKS = ['adsgram_block', 'gigapub', 'adsgram_init'];
-// AdsGram block ad = S2S: paid only after AdsGram's own server confirmed the ad (credit saved by api/ads.js, network 'daily_adsgram')
-const S2S_NETWORK = 'daily_adsgram';
-const s2sOn = (network) => network === 'adsgram_block' && !!process.env.ADSGRAM_S2S_SECRET;
 // ======================================================
-
-// Ad anti-cheat (same rules as api/ads.js)
-const MIN_WATCH_SECONDS = 10;
-const VIEW_TOLERANCE_SECONDS = 1.5;
-const COOLDOWN_SECONDS = 10;
-const TOKEN_MAX_AGE_SECONDS = 300;
-const signStart = (tgId, key, t) =>
-  crypto.createHmac('sha256', crypto.createHash('sha256').update('adtoken:' + process.env.BOT_TOKEN).digest()).update(`${tgId}:${key}:${t}`).digest('hex');
 
 const N = FARMS.length;
 
@@ -103,93 +88,37 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, balance: user.egBalance, farm: view(user.farm2) });
   }
 
-  // ── claim step 1: tap → server checks the farm is ready and signs a start token ──
-  if (action === 'start' || action === 'claim') {
+  // ── claim: farm must be unlocked + ready, then pay ──
+  if (action === 'claim') {
     if (user.accountLocked) return res.status(403).json({ error: 'account_locked' });
     const slot = user.farm2.slots[i];
     if (!slot?.unlocked) return res.status(400).json({ error: 'Buy this farm first' });
     const readyAt = slot.nextClaimAt ? new Date(slot.nextClaimAt).getTime() : 0;
     if (Date.now() < readyAt) return res.status(400).json({ error: 'Not ready yet' });
 
-    const network = req.body?.network;
-    if (!AD_NETWORKS.includes(network)) return res.status(400).json({ error: 'Invalid network' });
-    const tokenKey = `farm${i}:${network}`;
-
-    if (action === 'start') {
-      const t = Date.now();
-      return res.status(200).json({ success: true, startTime: t, signature: signStart(tgId, tokenKey, t) });
-    }
-
-    // ── claim step 2: verify the ad token + timing, then pay ──
-    const { startTime, signature, viewMs } = req.body;
-    if (!startTime || !signature) return res.status(400).json({ error: 'missing_ad_token' });
-    const startNum = Number(startTime);
-    if (signStart(tgId, tokenKey, startNum) !== signature) return res.status(400).json({ error: 'invalid_ad_token' });
-    const elapsed = (Date.now() - startNum) / 1000;
-    if (!(elapsed >= 0)) return res.status(400).json({ error: 'invalid_ad_token' });
-    if (elapsed > TOKEN_MAX_AGE_SECONDS) return res.status(400).json({ error: 'ad_token_expired' });
-    if (elapsed < MIN_WATCH_SECONDS) return res.status(400).json({ error: 'watch_time_too_short' });
-    const viewSec = Number(viewMs) / 1000;
-    if (!Number.isFinite(viewSec) || viewSec < MIN_WATCH_SECONDS) return res.status(400).json({ error: 'watch_time_too_short' });
-    if (viewSec > elapsed + VIEW_TOLERANCE_SECONDS) return res.status(400).json({ error: 'invalid_view_time' });
-    if (user.lastAdClaimAt && Date.now() - new Date(user.lastAdClaimAt).getTime() < COOLDOWN_SECONDS * 1000)
-      return res.status(400).json({ error: 'ad_cooldown' });
-
-    const sample = { s: startNum, c: Date.now(), w: Math.round(elapsed * 10) / 10, v: Math.round(viewSec * 10) / 10 };
-    const hit = detectBotPattern([...(user.recentAdClaims || []), sample]);
-    if (hit && (await lockForBotPattern(db, tgId, hit, `Farm ${i + 1} · ${network}`, [...(user.recentAdClaims || []), sample])))
-      return res.status(403).json({ error: 'account_locked' });
-
-    // AdsGram S2S: reserve one confirmed credit for this user, or tell the app to ask again in a moment
-    let credit = null;
-    if (s2sOn(network)) {
-      const r = await db.collection('adsgramS2S').findOneAndUpdate(
-        { telegramId: tgId, network: S2S_NETWORK, used: false, at: { $gte: new Date(startNum - 3000) } },
-        { $set: { used: true, usedAt: new Date() } },
-        { sort: { at: 1 } }
-      );
-      credit = r?.value || r;
-      if (!credit || !credit._id) return res.status(409).json({ error: 's2s_pending' });
-    }
-    const releaseCredit = () => (credit ? db.collection('adsgramS2S').updateOne({ _id: credit._id }, { $set: { used: false } }).catch(() => {}) : null);
-
     const now = new Date();
-    const today = bdTodayKey();
-    // Atomic: pays only if the farm is still unlocked + ready, and the ad token was never used before.
+    // Atomic: pays only if the farm is still unlocked + ready.
     const result = await users.findOneAndUpdate(
       {
         telegramId: tgId,
         [`${p}.unlocked`]: true,
-        $and: [
-          { $or: [{ [`${p}.nextClaimAt`]: null }, { [`${p}.nextClaimAt`]: { $lte: now } }] },
-          { $or: [{ lastAdStartUsed: { $exists: false } }, { lastAdStartUsed: { $lt: startNum } }] },
-        ],
+        $or: [{ [`${p}.nextClaimAt`]: null }, { [`${p}.nextClaimAt`]: { $lte: now } }],
       },
       {
-        // adTasks counter keeps the "ads watched today" number used by the withdraw requirement
-        $inc: { egBalance: cfg.reward, farmClaims: 1, totalAdsWatched: 1, [`adTasks.${today}.${network}`]: 1, ...cyInc('farm', cfg.reward) },
+        $inc: { egBalance: cfg.reward, farmClaims: 1, ...cyInc('farm', cfg.reward) },
         $min: cyMin(), // cycle report: "since last withdraw" counters (lib/cycleStats.js)
-        $set: { [`${p}.nextClaimAt`]: new Date(now.getTime() + cfg.hours * 3600 * 1000), lastAdClaimAt: now, lastAdStartUsed: startNum },
+        $set: { [`${p}.nextClaimAt`]: new Date(now.getTime() + cfg.hours * 3600 * 1000) },
         // farmClaimTimes = exact time of each farm claim (log only). api/withdraw.js counts farmClaims since the last withdrawal
-        $push: { recentAdClaims: { $each: [sample], $slice: -AD_CLAIM_HISTORY_KEEP }, farmClaimTimes: { $each: [Date.now()], $slice: -20 } },
+        $push: { farmClaimTimes: { $each: [Date.now()], $slice: -20 } },
       },
       { returnDocument: 'after' }
     );
     const updated = result?.value || result;
-    if (!updated) { await releaseCredit(); return res.status(400).json({ error: 'Already claimed or not ready' }); }
+    if (!updated) return res.status(400).json({ error: 'Already claimed or not ready' });
 
     await refCheck(db, updated); // referral milestone: friend made 3 farm claims today
-
-    // drop day-counters older than 30 days so the object does not grow forever
-    const cutoffKey = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    const stale = Object.keys(updated.adTasks || {}).filter((k) => k < cutoffKey);
-    if (stale.length) {
-      const unset = {};
-      for (const k of stale) unset[`adTasks.${k}`] = '';
-      await users.updateOne({ telegramId: tgId }, { $unset: unset });
-    }
     return res.status(200).json({ success: true, reward: cfg.reward, balance: updated.egBalance, farm: view(updated.farm2) });
   }
 
   return res.status(400).json({ error: 'Unknown action' });
-  }
+}
