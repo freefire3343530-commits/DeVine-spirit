@@ -150,8 +150,6 @@ export default async function handler(req, res) {
         totalRefEarned: 0,
         totalRefEarnedEG: 0,
         dailyClaimLast: null,
-        adTasks: {},
-        totalAdsWatched: 0,
         completedTasks: [],
         promosUsed: [],
         isBanned: false,
@@ -163,7 +161,7 @@ export default async function handler(req, res) {
         lastActive: new Date(),
       };
 
-      // bot-farm guard: many NEW accounts from one IP in minutes -> locked (no withdraw / ad rewards) until admin reviews
+      // bot-farm guard: many NEW accounts from one IP in minutes -> locked (no withdraw / rewards) until admin reviews
       const { count: ipSignups } = await recordSignupAndCheckVelocity(db, clientIp);
       if (ipSignups >= IP_SIGNUP_VELOCITY_THRESHOLD) {
         newUser.accountLocked = true; newUser.accountLockedAt = new Date(); newUser.accountLockedReason = 'ip_signup_velocity';
@@ -200,4 +198,4 @@ export default async function handler(req, res) {
     console.error('user.js error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
-        }
+}
