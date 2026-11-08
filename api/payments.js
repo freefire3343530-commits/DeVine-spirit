@@ -1,6 +1,6 @@
 // FILE PATH: api/payments.js
 // (GitHub repo te ei path e file ta rakhbe: api/payments.js)
-// TON deposit -> "Create Task" (ported from NEWTUBE api/payments.js, adapted to Gram Edge Farm).
+// TON deposit -> "Create Task" (ported from NEWTUBE api/payments.js, adapted to DeVine Spirit).
 //   POST /api/payments {action:'create'|'cancel', telegramId, initData, title, url, package|orderId}
 //   GET  /api/payments?action=status|myTasks&telegramId&initData[&orderId]
 //   cron: GET/POST /api/payments?cron=checkDeposits&secret=CRON_SECRET   (every 1 min from cron-job.org)
@@ -234,4 +234,4 @@ async function checkTaskCreate(db, txs, now) {
     if (ADMIN_ID) tgSend(ADMIN_ID, `🆕 <b>New Task Waiting for Review</b>\n\n📋 ${esc(taskDoc.title)}\n🔗 ${esc(taskDoc.link)}\n👥 ${taskDoc.maxCompletions} slots · 💰 ${TASK_REWARD_MM} MM$/person\n\nOpen "🕐 Pending Review" in the admin panel.`).catch(() => {});
   }
   return { expired: expired.modifiedCount, matched, flagged };
-      }
+}
