@@ -1,13 +1,13 @@
 // FILE PATH: api/farm.js
-// Farming: 6 farms, each pays a fixed MM$ reward once per cycle.
-// Farm 1 is free, farms 2-6 are bought with MM$.
+// Farming: 6 farms, each pays a fixed DVS$ reward once per cycle.
+// Farm 1 is free, farms 2-6 are bought with DVS$.
 import { cyInc, cyMin } from '../lib/cycleStats.js';
 import { getDb } from '../lib/mongodb.js';
 import { verifyTelegramInit } from '../lib/auth.js';
 import { refCheck } from '../lib/refReward.js';
 
-// ===== EDIT HERE: farm settings (50,000 MM$ = $1) =====
-// hours = how often you can claim, reward = MM$ per claim, price = MM$ to buy (0 = free)
+// ===== EDIT HERE: farm settings (50,000 DVS$ = $1) =====
+// hours = how often you can claim, reward = DVS$ per claim, price = DVS$ to buy (0 = free)
 const FARMS = [
   { name: 'Farm 1', hours: 1,  reward: 30,  price: 0 },
   { name: 'Farm 2', hours: 2,  reward: 50,  price: 250 },
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
       { telegramId: tgId, [`${p}.unlocked`]: { $ne: true }, egBalance: { $gte: cfg.price } },
       { $inc: { egBalance: -cfg.price }, $set: { [`${p}.unlocked`]: true, [`${p}.nextClaimAt`]: null } }
     );
-    if (!r.modifiedCount) return res.status(400).json({ error: 'Not enough MM$ (or already bought)' });
+    if (!r.modifiedCount) return res.status(400).json({ error: 'Not enough DVS$ (or already bought)' });
     user = await users.findOne({ telegramId: tgId });
     await refCheck(db, user); // referral milestone: friend unlocked 5 farms
     return res.status(200).json({ success: true, balance: user.egBalance, farm: view(user.farm2) });
