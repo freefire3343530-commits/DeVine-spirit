@@ -6,15 +6,17 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "echo \"no build step\"",
+    "vendor": "echo \"no vendor step\""
   },
   "engines": {
-    "node": ">=18"
+    "node": "22.x"
   },
   "dependencies": {
-    "@ton/core": "^0.59.0",
+    "@ton/core": "^0.62.0",
     "@ton/crypto": "^3.3.0",
-    "@ton/ton": "^15.1.0",
+    "@ton/ton": "^15.4.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "mongodb": "^6.3.0"
