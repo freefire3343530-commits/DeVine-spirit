@@ -1,6 +1,6 @@
 // FILE PATH: server.js
 // (GitHub repo te ei path e file ta rakhbe: server.js)
-// DeVine Spirit API — standalone Express server (no Vercel needed).
+// Gram Edge Farm API — standalone Express server (no Vercel needed).
 // Runs on any Node host: Render, Railway, VPS, etc.
 import express from 'express';
 import cors from 'cors';
@@ -53,4 +53,4 @@ app.use((err, _req, res, _next) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`DeVine Spirit API listening on :${port}`));
+app.listen(port, () => console.log(`Gram Edge Farm API listening on :${port}`));
