@@ -3,7 +3,7 @@ import { getDb } from '../lib/mongodb.js';
 import { verifyTelegramInit } from '../lib/auth.js';
 import { bdTodayKey } from '../lib/dateUtils.js';
 
-// ===== EDIT HERE: login bonus (MM$ for day 1, 2, 3 ... then it starts again from day 1) =====
+// ===== EDIT HERE: login bonus (DVS$ for day 1, 2, 3 ... then it starts again from day 1) =====
 const LOGIN_BONUS = [10, 20, 40, 70, 100, 150, 300];
 // ===========================================================================================
 
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.isBanned) return res.status(403).json({ error: 'Account banned' });
 
-    // ── action: login (daily login bonus, streak 10 → 300 MM$) ──────
+    // ── action: login (daily login bonus, streak 10 → 300 DVS$) ──────
     // One claim per Bangladesh calendar day. Miss a day and the streak starts again from day 1.
     if (action === 'login') {
       if (user.accountLocked) return res.status(403).json({ error: 'account_locked' });
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
       // checkOnly = just validate, don't redeem yet.
       if (checkOnly) return res.status(200).json({ valid: true, reward: promo.reward, currency: 'mm' });
 
-      // Every promo pays MM$ now (old Gold promos are converted by the migration script).
+      // Every promo pays DVS$ now (old Gold promos are converted by the migration script).
       const field = 'egBalance';
 
       // Atomic redeem: only succeeds if this code isn't already in
