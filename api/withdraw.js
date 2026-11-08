@@ -8,7 +8,7 @@
 //
 // Rules:
 //   • minimum 2,500 MM$ (= $0.05)
-//   • requirement: 3 farm claims since the user's last withdrawal (never expires, nothing resets with time)
+//   • requirement: optional lifetime tasks (TASKS_REQUIRED below, 0 = none)
 //   • 5% fee is taken from the payout
 //   • the first wallet becomes the user's locked wallet; one wallet = one account
 import { wdNo, nextWithdrawSerial } from '../lib/wdSerial.js';
@@ -21,7 +21,6 @@ import { buildCycleReport, renderCycleShort } from '../lib/cycleStats.js';
 const MIN_WITHDRAW_EG = 2500;          // MM$  (50,000 MM$ = $1  →  2,500 MM$ = $0.05)
 const EG_TO_USDT = 1 / 50000;
 const FEE_PERCENT = 5;
-const FARM_CLAIMS_REQUIRED = 3;        // farm claims needed since the last withdrawal (no time limit)
 const TASKS_REQUIRED = 0;              // lifetime tasks needed (0 = no task requirement)
 const MIN_ACCOUNT_AGE_HOURS = 0;       // first withdrawal only (0 = off)
 const WALLET_CHANGE_MAX_REQUESTS = 2;  // lifetime wallet-change requests per user
@@ -33,8 +32,6 @@ const ADMIN_ID = process.env.ADMIN_ID;
 const USDT_MASTER = process.env.TON_USDT_MASTER || 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs';
 const tonkeeperPayUrl = (addr, usd) => `https://app.tonkeeper.com/transfer/${encodeURIComponent(addr)}?jetton=${USDT_MASTER}&amount=${Math.round(Number(usd) * 1e6)}`;
 const TON_ADDR_RE = /^(UQ|EQ)[A-Za-z0-9_-]{46}$/;
-// farmClaims = lifetime counter (api/farm.js); farmClaimsAtWithdraw = its value when the last withdrawal was made
-const recentClaims = (u) => Math.max(0, (u.farmClaims || 0) - (u.farmClaimsAtWithdraw || 0));
 const esc = (v) => String(v ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 const ageHoursLeft = (u) => {
   if (!MIN_ACCOUNT_AGE_HOURS || (u.withdrawalCount || 0) > 0) return 0;
@@ -59,7 +56,6 @@ async function handleStatus(req, res, db) {
   const a = await authed(req, res, db.collection('users'), req.query);
   if (!a) return;
   const u = a.user;
-  const have = recentClaims(u);
   const tasksHave = (u.completedTasks || []).length;
   return res.status(200).json({
     ok: true,
@@ -74,7 +70,6 @@ async function handleStatus(req, res, db) {
       requestsLeft: Math.max(0, WALLET_CHANGE_MAX_REQUESTS - (u.walletChangeRequests || 0)),
     },
     requirements: {
-      farmRequired: FARM_CLAIMS_REQUIRED, farmHave: have, farmMet: have >= FARM_CLAIMS_REQUIRED,
       tasksRequired: TASKS_REQUIRED, tasksHave, tasksMet: tasksHave >= TASKS_REQUIRED,
       accountAgeHoursLeft: ageHoursLeft(u),
     },
@@ -134,22 +129,17 @@ async function handleCreate(req, res, db) {
   if (tasksHave < TASKS_REQUIRED) return res.status(400).json({ ok: false, error: 'need_tasks', message: `Complete ${TASKS_REQUIRED - tasksHave} more task(s) first.` });
   const left = ageHoursLeft(user);
   if (left > 0) return res.status(400).json({ ok: false, error: 'account_too_new', message: `Your account is too new. Wait ${left} more hour(s).` });
-  const have = recentClaims(user);
-  if (have < FARM_CLAIMS_REQUIRED) {
-    return res.status(400).json({ ok: false, error: 'need_farm_claims', message: `Claim your farms ${FARM_CLAIMS_REQUIRED} times first (you have ${have}).` });
-  }
   if ((user.egBalance || 0) < amount) return res.status(400).json({ ok: false, error: 'insufficient_balance', message: 'Not enough MM$.' });
 
   const grossUsdt = amount * EG_TO_USDT;
   const usdtAmount = parseFloat((grossUsdt * (1 - FEE_PERCENT / 100)).toFixed(4));
 
-  const prevBaseline = user.farmClaimsAtWithdraw || 0;
-  const undo = { $inc: { egBalance: amount, withdrawalCount: -1 }, $set: { withdrawPending: false, farmClaimsAtWithdraw: prevBaseline } };
+  const undo = { $inc: { egBalance: amount, withdrawalCount: -1 }, $set: { withdrawPending: false } };
   if (!hasLocked) undo.$unset = { lockedWalletAddress: '' };
-  const set = { withdrawPending: true, farmClaimsAtWithdraw: user.farmClaims || 0 }; // the 3 claims are used up by this withdrawal
+  const set = { withdrawPending: true };
   if (!hasLocked) set.lockedWalletAddress = address;
 
-  // ATOMIC GATE: balance, pending flag and the 3-farm-claims rule are all checked inside this single update,
+  // ATOMIC GATE: balance and pending flag are checked inside this single update,
   // so a double tap can never slip a second withdrawal through.
   const gate = await users.findOneAndUpdate(
     {
@@ -157,12 +147,6 @@ async function handleCreate(req, res, db) {
       isBanned: { $ne: true },
       egBalance: { $gte: amount },
       withdrawPending: { $ne: true },
-      $expr: {
-        $gte: [
-          { $subtract: [{ $ifNull: ['$farmClaims', 0] }, { $ifNull: ['$farmClaimsAtWithdraw', 0] }] },
-          FARM_CLAIMS_REQUIRED,
-        ],
-      },
     },
     { $inc: { egBalance: -amount, withdrawalCount: 1 }, $set: set },
     { returnDocument: 'after' }
@@ -171,7 +155,7 @@ async function handleCreate(req, res, db) {
   if (!updated) {
     const again = await users.findOne({ telegramId: tgId }, { projection: { withdrawPending: 1 } });
     if (again?.withdrawPending) return res.status(409).json({ ok: false, error: 'withdraw_already_pending', message: 'You already have a withdrawal being processed. Wait until it is approved or rejected.' });
-    return res.status(409).json({ ok: false, error: 'gate_failed', message: 'Could not process the withdrawal. Your balance or farm claims changed. Refresh and try again.' });
+    return res.status(409).json({ ok: false, error: 'gate_failed', message: 'Could not process the withdrawal. Your balance changed. Refresh and try again.' });
   }
 
   const doc = {
@@ -185,7 +169,6 @@ async function handleCreate(req, res, db) {
     feePercent: FEE_PERCENT,
     usdtAmount,                 // net amount the bot pays out
     status: 'pending',
-    prevBaseline,               // restored if the admin rejects this withdrawal
     createdAt: new Date(),
   };
   try { doc.serial = await nextWithdrawSerial(db); } catch { /* the number is cosmetic: never block a withdrawal for it */ }
@@ -211,7 +194,7 @@ async function handleCreate(req, res, db) {
         `📤 Method: <b>tonkeeper</b>\n` +
         `📍 <code>${esc(address)}</code>\n` +
         `📊 Earlier: ✅ ${prevApproved} approved · ❌ ${prevRejected} rejected\n` +
-        `🌾 Farm claims since last withdraw: <b>${have}</b> · Total claims: <b>${user.farmClaims || 0}</b>\n` +
+        `✅ Tasks done: <b>${user.tasksDoneTotal || (user.completedTasks || []).length}</b>\n` +
         `👥 Referrals: <b>${user.totalReferred || 0}</b>${user.multiAccountFlag ? '\n🚩 Multi-account flag: <b>YES</b>' : ''}\n` +
         (sharedWith.length ? `🚨 <b>This wallet was also used by ${sharedWith.length} other account(s):</b> ${sharedWith.map((x) => '<code>' + esc(x) + '</code>').join(', ')}\n` : '') +
         `\n${renderCycleShort(cyRep)}\n\n` +
