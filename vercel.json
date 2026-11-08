@@ -2,7 +2,9 @@
   "version": 2,
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
-    { "src": "i18n.js", "use": "@vercel/static" }
+    { "src": "i18n.js", "use": "@vercel/static" },
+    { "src": "spirits/*.html", "use": "@vercel/static" },
+    { "src": "assets/spirits/*.webp", "use": "@vercel/static" }
   ],
   "routes": [
     { "handle": "filesystem" },
