@@ -1,6 +1,6 @@
 // FILE PATH: api/payments.js
 // (GitHub repo te ei path e file ta rakhbe: api/payments.js)
-// TON deposit -> "Create Task" (ported from NEWTUBE api/payments.js, adapted to Gram Edge Farm).
+// TON deposit -> "Create Task" (ported from NEWTUBE api/payments.js, adapted to DeVine Spirit).
 //   POST /api/payments {action:'create'|'cancel', telegramId, initData, title, url, package|orderId}
 //   GET  /api/payments?action=status|myTasks&telegramId&initData[&orderId]
 //   cron: GET/POST /api/payments?cron=checkDeposits&secret=CRON_SECRET   (every 1 min from cron-job.org)
@@ -13,7 +13,7 @@ import { isCronAuthorized } from '../lib/cronAuth.js';
 import { TON_RECEIVE_ADDRESS, randomTonMemo, buildTonDeepLink, fetchRecentTonTransactions } from '../lib/tonPay.js';
 
 // ===== EDIT HERE =====
-export const TASK_REWARD_MM = 10;            // MM$ every completion of a user-created task pays
+export const TASK_REWARD_MM = 10;            // DVS$ every completion of a user-created task pays
 export const TASK_PACKAGES = {               // taskCount completions for X TON
   100:  { taskCount: 100,  priceNanoTon: 150_000_000 },
   200:  { taskCount: 200,  priceNanoTon: 300_000_000 },
@@ -230,8 +230,8 @@ async function checkTaskCreate(db, txs, now) {
     const ins = await tasks.insertOne(taskDoc);
     await orders.updateOne({ _id: o._id }, { $set: { createdTaskId: ins.insertedId } });
     matched++;
-    tgSend(o.userId, `✅ <b>Payment Confirmed!</b>\n\n📋 ${esc(taskDoc.title)}\n👥 ${taskDoc.maxCompletions} people can complete it (+${TASK_REWARD_MM} MM$ each)\n\n⏳ Waiting for admin review — once approved it goes live in the Tasks tab. 🎉`).catch(() => {});
-    if (ADMIN_ID) tgSend(ADMIN_ID, `🆕 <b>New Task Waiting for Review</b>\n\n📋 ${esc(taskDoc.title)}\n🔗 ${esc(taskDoc.link)}\n👥 ${taskDoc.maxCompletions} slots · 💰 ${TASK_REWARD_MM} MM$/person\n\nOpen "🕐 Pending Review" in the admin panel.`).catch(() => {});
+    tgSend(o.userId, `✅ <b>Payment Confirmed!</b>\n\n📋 ${esc(taskDoc.title)}\n👥 ${taskDoc.maxCompletions} people can complete it (+${TASK_REWARD_MM} DVS$ each)\n\n⏳ Waiting for admin review — once approved it goes live in the Tasks tab. 🎉`).catch(() => {});
+    if (ADMIN_ID) tgSend(ADMIN_ID, `🆕 <b>New Task Waiting for Review</b>\n\n📋 ${esc(taskDoc.title)}\n🔗 ${esc(taskDoc.link)}\n👥 ${taskDoc.maxCompletions} slots · 💰 ${TASK_REWARD_MM} DVS$/person\n\nOpen "🕐 Pending Review" in the admin panel.`).catch(() => {});
   }
   return { expired: expired.modifiedCount, matched, flagged };
-      }
+}
