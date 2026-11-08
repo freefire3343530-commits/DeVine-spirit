@@ -16,10 +16,10 @@ import { setBotWebhook, getBotWebhookInfo, deleteBotWebhook, webhookUrl } from '
 const APP_URL = 'https://de-vine-spirit.vercel.app';
 const SKIP_IF_ACTIVE_WITHIN_HOURS = 2;
 const MESSAGES = [   // one is picked each day (rotates), so users don't see the same text every day
-  '🌾 <b>Your farm is waiting!</b>\n\nClaim your farm rewards, collect your login bonus and earn MM$.',
-  '🎁 <b>Daily reward is ready!</b>\n\nOpen Gram Edge Farm, collect your login bonus and claim your farms.',
-  '🥕 <b>Your farms may be ready to claim!</b>\n\nCome back, claim and earn MM$ before you forget.',
-  '💰 <b>Earn MM$ today!</b>\n\nComplete tasks and claim your farms. Every day counts!',
+  '✨ <b>Your spirit is waiting!</b>\n\nOpen DeVine Spirit, collect your login bonus and earn MM$.',
+  '🎁 <b>Daily reward is ready!</b>\n\nOpen DeVine Spirit and collect your login bonus.',
+  '🌟 <b>A new day, a new reward!</b>\n\nCome back, finish a few tasks and earn MM$ before you forget.',
+  '💰 <b>Earn MM$ today!</b>\n\nComplete tasks and keep your login streak alive. Every day counts!',
 ];
 // =====================
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -55,7 +55,7 @@ async function runNotify(db, today) {
   const users = db.collection('users');
   const settings = db.collection('botSettings');
   const text = MESSAGES[Math.floor(Date.now() / 86400000) % MESSAGES.length];
-  const markup = { inline_keyboard: [[{ text: '🌾 Open Gram Edge Farm', web_app: { url: APP_URL } }]] };
+  const markup = { inline_keyboard: [[{ text: '✨ Open DeVine Spirit', web_app: { url: APP_URL } }]] };
   const cutoff = new Date(Date.now() - SKIP_IF_ACTIVE_WITHIN_HOURS * 3600000);
   const query = {
     isBanned: { $ne: true }, botBlocked: { $ne: true }, lastNotifiedDay: { $ne: today },
