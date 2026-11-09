@@ -152,6 +152,7 @@ export default async function handler(req, res) {
         dailyClaimLast: null,
         completedTasks: [],
         promosUsed: [],
+        spirits: [],                  // unlocked spirit ids (the free one is claimed in the app via /api/daily {action:'claimSpirit'})
         isBanned: false,
         appOpens: 1,
         withdrawPending: false,
