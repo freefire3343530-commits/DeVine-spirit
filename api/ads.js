@@ -18,13 +18,13 @@ const TOKEN_MAX_AGE_SECONDS = 300;
 const signStart = (tgId, network, t) =>
   crypto.createHmac('sha256', crypto.createHash('sha256').update('adtoken:' + process.env.BOT_TOKEN).digest()).update(`${tgId}:${network}:${t}`).digest('hex');
 
-// Play → Ad Tasks. Each network has its own daily watch limit and MM$
-// reward per ad (50,000 MM$ = $1). Counters reset every day at Bangladesh midnight (bdTodayKey).
+// Play → Ad Tasks. Each network has its own daily watch limit and $Devine
+// reward per ad (100,000 $Devine = $1). Counters reset every day at Bangladesh midnight (bdTodayKey).
 const AD_NETWORKS = {
   gigapub:       { label: 'GigaPub Ads',        limit: 5,  reward: 10 },
   adsgram_init:  { label: 'AdsGram Ads',        limit: 5,  reward: 10 },
 
-  // ===== Tasks → Daily ads (EDIT HERE: limit = times per day, reward = MM$ per ad) =====
+  // ===== Tasks → Daily ads (EDIT HERE: limit = times per day, reward = $Devine per ad) =====
   // Adsgram Task block (task-56002): user completes an Adsgram task, no video view time needed.
   daily_adsgram_task: { label: 'Adsgram Task', limit: 10, reward: 40, minWatch: 3, noView: true, tokenMaxAge: 1800, s2s: true },
   // GigaPub rewarded ad
@@ -204,4 +204,4 @@ export default async function handler(req, res) {
     console.error('ads.js error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
-          }
+}
