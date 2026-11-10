@@ -13,7 +13,7 @@ import { isCronAuthorized } from '../lib/cronAuth.js';
 import { TON_RECEIVE_ADDRESS, randomTonMemo, buildTonDeepLink, fetchRecentTonTransactions } from '../lib/tonPay.js';
 
 // ===== EDIT HERE =====
-export const TASK_REWARD_MM = 10;            // MM$ every completion of a user-created task pays
+export const TASK_REWARD_MM = 10;            // $Devine every completion of a user-created task pays
 export const TASK_PACKAGES = {               // taskCount completions for X TON
   100:  { taskCount: 100,  priceNanoTon: 150_000_000 },
   200:  { taskCount: 200,  priceNanoTon: 300_000_000 },
@@ -230,8 +230,8 @@ async function checkTaskCreate(db, txs, now) {
     const ins = await tasks.insertOne(taskDoc);
     await orders.updateOne({ _id: o._id }, { $set: { createdTaskId: ins.insertedId } });
     matched++;
-    tgSend(o.userId, `✅ <b>Payment Confirmed!</b>\n\n📋 ${esc(taskDoc.title)}\n👥 ${taskDoc.maxCompletions} people can complete it (+${TASK_REWARD_MM} MM$ each)\n\n⏳ Waiting for admin review — once approved it goes live in the Tasks tab. 🎉`).catch(() => {});
-    if (ADMIN_ID) tgSend(ADMIN_ID, `🆕 <b>New Task Waiting for Review</b>\n\n📋 ${esc(taskDoc.title)}\n🔗 ${esc(taskDoc.link)}\n👥 ${taskDoc.maxCompletions} slots · 💰 ${TASK_REWARD_MM} MM$/person\n\nOpen "🕐 Pending Review" in the admin panel.`).catch(() => {});
+    tgSend(o.userId, `✅ <b>Payment Confirmed!</b>\n\n📋 ${esc(taskDoc.title)}\n👥 ${taskDoc.maxCompletions} people can complete it (+${TASK_REWARD_MM} $Devine each)\n\n⏳ Waiting for admin review — once approved it goes live in the Tasks tab. 🎉`).catch(() => {});
+    if (ADMIN_ID) tgSend(ADMIN_ID, `🆕 <b>New Task Waiting for Review</b>\n\n📋 ${esc(taskDoc.title)}\n🔗 ${esc(taskDoc.link)}\n👥 ${taskDoc.maxCompletions} slots · 💰 ${TASK_REWARD_MM} $Devine/person\n\nOpen "🕐 Pending Review" in the admin panel.`).catch(() => {});
   }
   return { expired: expired.modifiedCount, matched, flagged };
 }
