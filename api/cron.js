@@ -16,10 +16,10 @@ import { setBotWebhook, getBotWebhookInfo, deleteBotWebhook, webhookUrl } from '
 const APP_URL = 'https://de-vine-spirit.vercel.app';
 const SKIP_IF_ACTIVE_WITHIN_HOURS = 2;
 const MESSAGES = [   // one is picked each day (rotates), so users don't see the same text every day
-  '✨ <b>Your spirit is waiting!</b>\n\nOpen DeVine Spirit, collect your login bonus and earn MM$.',
+  '✨ <b>Your spirit is waiting!</b>\n\nOpen DeVine Spirit, collect your login bonus and earn $Devine.',
   '🎁 <b>Daily reward is ready!</b>\n\nOpen DeVine Spirit and collect your login bonus.',
-  '🌟 <b>A new day, a new reward!</b>\n\nCome back, finish a few tasks and earn MM$ before you forget.',
-  '💰 <b>Earn MM$ today!</b>\n\nComplete tasks and keep your login streak alive. Every day counts!',
+  '🌟 <b>A new day, a new reward!</b>\n\nCome back, finish a few tasks and earn $Devine before you forget.',
+  '💰 <b>Earn $Devine today!</b>\n\nComplete tasks and keep your login streak alive. Every day counts!',
 ];
 // =====================
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
