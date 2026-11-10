@@ -97,19 +97,21 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, reward: promo.reward, currency: 'mm' });
     }
 
-    // ── action: claimSpirit (the FREE plan: one free spirit, claimed once) ──
+    // ── action: claimSpirit (the FREE plan: one free Leaf Spirit per account) ─────
+    // The spirit id is fixed on the server, so a client cannot claim a paid spirit this way.
+    // Paid spirits are added to user.spirits by the (future) buy flow.
     if (action === 'claimSpirit') {
       if (user.accountLocked) return res.status(403).json({ error: 'account_locked' });
       const FREE_SPIRIT = 'leaf';
-      // Atomic: only passes while the spirit is not in the list yet, so a double tap cannot add it twice.
+      // Atomic: the filter only matches while the spirit is not yet owned, so a double tap cannot add it twice.
       const result = await users.findOneAndUpdate(
         { telegramId: String(telegramId), spirits: { $ne: FREE_SPIRIT } },
         { $addToSet: { spirits: FREE_SPIRIT } },
         { returnDocument: 'after' }
       );
       const updated = result?.value || result;
-      if (!updated) return res.status(200).json({ success: true, already: true, spirits: user.spirits || [FREE_SPIRIT] });
-      return res.status(200).json({ success: true, spirit: FREE_SPIRIT, spirits: updated.spirits });
+      if (!updated) return res.status(200).json({ success: true, already: true, spirits: user.spirits || [] });
+      return res.status(200).json({ success: true, spirits: updated.spirits || [FREE_SPIRIT] });
     }
 
     return res.status(400).json({ error: 'Invalid action. Use: login | promo | claimSpirit' });
