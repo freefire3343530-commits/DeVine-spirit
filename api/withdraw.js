@@ -1,5 +1,5 @@
 // FILE PATH: api/withdraw.js
-// Withdraw system (ported from NEWTUBE, adapted to MM$ / TonKeeper USDT).
+// Withdraw system (ported from NEWTUBE, adapted to $Devine / TonKeeper USDT).
 //
 //   GET  /api/withdraw?action=status   → balance + requirements + wallet state, in ONE call
 //   GET  /api/withdraw?action=history  → the user's withdrawals
@@ -7,7 +7,7 @@
 //   POST /api/withdraw                 → { action:'walletChangeRequest' | 'walletChangeApply' }
 //
 // Rules:
-//   • minimum 2,500 MM$ (= $0.05)
+//   • minimum 5,000 $Devine (= $0.05)
 //   • requirement: optional lifetime tasks (TASKS_REQUIRED below, 0 = none)
 //   • 5% fee is taken from the payout
 //   • the first wallet becomes the user's locked wallet; one wallet = one account
@@ -18,8 +18,8 @@ import { tgSend } from '../lib/tg.js';
 import { buildCycleReport, renderCycleShort } from '../lib/cycleStats.js';
 
 // ===== EDIT HERE =====
-const MIN_WITHDRAW_EG = 2500;          // MM$  (50,000 MM$ = $1  →  2,500 MM$ = $0.05)
-const EG_TO_USDT = 1 / 50000;
+const MIN_WITHDRAW_EG = 5000;          // $Devine  (50,000 $Devine = $1  →  2,500 $Devine = $0.05)
+const EG_TO_USDT = 1 / 100000;
 const FEE_PERCENT = 5;
 const TASKS_REQUIRED = 0;              // lifetime tasks needed (0 = no task requirement)
 const MIN_ACCOUNT_AGE_HOURS = 0;       // first withdrawal only (0 = off)
@@ -105,7 +105,7 @@ async function handleCreate(req, res, db) {
 
   const amount = Math.floor(Number(req.body?.egAmount));
   if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ ok: false, error: 'invalid_amount', message: 'Enter a valid amount.' });
-  if (amount < MIN_WITHDRAW_EG) return res.status(400).json({ ok: false, error: 'below_minimum', message: `Minimum withdrawal is ${MIN_WITHDRAW_EG.toLocaleString()} MM$.` });
+  if (amount < MIN_WITHDRAW_EG) return res.status(400).json({ ok: false, error: 'below_minimum', message: `Minimum withdrawal is ${MIN_WITHDRAW_EG.toLocaleString()} $Devine.` });
   if (user.accountLocked) return res.status(403).json({ ok: false, error: 'account_locked', message: 'Your account is under review. Withdrawals are paused. Contact support.' });
 
   // wallet: the first one becomes the locked wallet; later requests always use the locked wallet
@@ -129,7 +129,7 @@ async function handleCreate(req, res, db) {
   if (tasksHave < TASKS_REQUIRED) return res.status(400).json({ ok: false, error: 'need_tasks', message: `Complete ${TASKS_REQUIRED - tasksHave} more task(s) first.` });
   const left = ageHoursLeft(user);
   if (left > 0) return res.status(400).json({ ok: false, error: 'account_too_new', message: `Your account is too new. Wait ${left} more hour(s).` });
-  if ((user.egBalance || 0) < amount) return res.status(400).json({ ok: false, error: 'insufficient_balance', message: 'Not enough MM$.' });
+  if ((user.egBalance || 0) < amount) return res.status(400).json({ ok: false, error: 'insufficient_balance', message: 'Not enough $Devine.' });
 
   const grossUsdt = amount * EG_TO_USDT;
   const usdtAmount = parseFloat((grossUsdt * (1 - FEE_PERCENT / 100)).toFixed(4));
@@ -190,7 +190,7 @@ async function handleCreate(req, res, db) {
       const sent = await tgSend(ADMIN_ID,
         `💸 <b>New Withdraw Request ${wdNo(doc)}</b>\n\n` +
         `👤 <code>${tgId}</code>${user.username ? ' (@' + esc(user.username) + ')' : ''}\n` +
-        `💰 ${amount.toLocaleString()} MM$ → <b>${usdtAmount} USDT</b> (after ${FEE_PERCENT}% fee)\n` +
+        `💰 ${amount.toLocaleString()} $Devine → <b>${usdtAmount} USDT</b> (after ${FEE_PERCENT}% fee)\n` +
         `📤 Method: <b>tonkeeper</b>\n` +
         `📍 <code>${esc(address)}</code>\n` +
         `📊 Earlier: ✅ ${prevApproved} approved · ❌ ${prevRejected} rejected\n` +
@@ -240,7 +240,7 @@ async function handleWalletChange(req, res, db, action) {
     }
     if (ADMIN_ID) {
       tgSend(ADMIN_ID,
-        `🔄 <b>Wallet Change Request</b>\n\n👤 <code>${tgId}</code>${user.username ? ' (@' + esc(user.username) + ')' : ''}\n📍 Current: <code>${esc(user.lockedWalletAddress)}</code>\n🔢 Request <b>${gu.walletChangeRequests}/${WALLET_CHANGE_MAX_REQUESTS}</b>\n💰 Balance: <b>${(gu.egBalance || 0).toLocaleString()} MM$</b>`,
+        `🔄 <b>Wallet Change Request</b>\n\n👤 <code>${tgId}</code>${user.username ? ' (@' + esc(user.username) + ')' : ''}\n📍 Current: <code>${esc(user.lockedWalletAddress)}</code>\n🔢 Request <b>${gu.walletChangeRequests}/${WALLET_CHANGE_MAX_REQUESTS}</b>\n💰 Balance: <b>${(gu.egBalance || 0).toLocaleString()} $Devine</b>`,
         { reply_markup: { inline_keyboard: [[{ text: '✅ Accept', callback_data: `wc_ok_${tgId}` }, { text: '❌ Deny', callback_data: `wc_no_${tgId}` }]] } }
       ).catch(() => {});
     }
