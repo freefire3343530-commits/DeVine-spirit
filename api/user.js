@@ -21,7 +21,7 @@ import { REF } from '../lib/refReward.js';
 
 const MAX_IP_SWITCHES = 2;
 
-// Referral: referrer gets this many MM$ the moment a friend joins via their link.
+// Referral: referrer gets this many $Devine the moment a friend joins via their link.
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -178,7 +178,7 @@ export default async function handler(req, res) {
           // also remember WHEN each signup happened (last 50) so referral velocity can be measured
           const after = await users.findOneAndUpdate(
             { telegramId: referrer.telegramId },
-            { $inc: { totalReferred: 1, ...(payJoin ? { egBalance: REF.join, totalRefEarnedEG: REF.join, 'refStats.join.n': 1, 'refStats.join.mm': REF.join, ...cyInc('refJoin', REF.join) } : {}) }, ...(payJoin ? { $min: cyMin() } : {}), // +50 MM$ for the join; the other milestones are paid later by lib/refReward.js
+            { $inc: { totalReferred: 1, ...(payJoin ? { egBalance: REF.join, totalRefEarnedEG: REF.join, 'refStats.join.n': 1, 'refStats.join.mm': REF.join, ...cyInc('refJoin', REF.join) } : {}) }, ...(payJoin ? { $min: cyMin() } : {}), // +50 $Devine for the join; the other milestones are paid later by lib/refReward.js
               $push: { recentReferralSignups: { $each: [new Date()], $slice: -50 } } },
             { returnDocument: 'after' }
           );
