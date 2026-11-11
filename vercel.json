@@ -1,13 +1,41 @@
 {
   "version": 2,
   "builds": [
-    { "src": "index.html", "use": "@vercel/static" },
-    { "src": "i18n.js", "use": "@vercel/static" },
-    { "src": "spirits/*.html", "use": "@vercel/static" },
-    { "src": "assets/spirits/*.webp", "use": "@vercel/static" }
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "i18n.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "spirits/*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "assets/spirits/*.webp",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "assets/bg/*.webp",
+      "use": "@vercel/static"
+    }
   ],
   "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/assets/bg/(.*)",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      },
+      "continue": true
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
