@@ -171,7 +171,7 @@ export default async function handler(req, res) {
         ],
       },
       {
-        $inc: { egBalance: cfg.reward, [path]: 1, totalAdsWatched: 1, ...(network === 'daily_adsgram_task' ? { adsgramTaskTotal: 1 } : {}), ...cyInc(network, cfg.reward) },
+        $inc: { egBalance: cfg.reward, [path]: 1, totalAdsWatched: 1, ...(network === 'daily_adsgram_task' ? { adsgramTaskTotal: 1 } : {}), ...(network === 'daily_adsgram' ? { adsgramAdTotal: 1 } : {}), ...cyInc(network, cfg.reward) },
         $min: cyMin(), // cycle report counters (lib/cycleStats.js)
         $set: { lastAdClaimAt: new Date(), lastAdStartUsed: startNum },
         ...(cfg.noView ? {} : { $push: { recentAdClaims: { $each: [sample], $slice: -AD_CLAIM_HISTORY_KEEP } } }),
@@ -198,7 +198,7 @@ export default async function handler(req, res) {
       await users.updateOne({ telegramId: tgId }, { $unset: unset });
     }
 
-    if (network === 'daily_adsgram_task') await refCheck(db, updated); // referral milestone: friend finished 10 Adsgram tasks
+    if (network === 'daily_adsgram' || network === 'daily_adsgram_task') await refCheck(db, updated); // referral rewards: friend watched 10 Adsgram ads / finished 10 Adsgram tasks
     return res.status(200).json({ success: true, reward: cfg.reward, watched, limit: cfg.limit });
   } catch (err) {
     console.error('ads.js error:', err);
