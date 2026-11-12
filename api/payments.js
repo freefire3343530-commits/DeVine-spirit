@@ -64,7 +64,7 @@ export default async function handler(req, res) {
   try {
     const db = await getDb();
     await ensureIndexes(db);
-    if (req.query?.cron === 'checkDeposits') return cronHandler(req, res, db);
+    if (req.query?.cron === 'checkDeposits') return await cronHandler(req, res, db);
 
     const src = req.method === 'GET' ? req.query : (req.body || {});
     const tgUser = verifyTelegramInit(src.initData);
@@ -154,7 +154,9 @@ export default async function handler(req, res) {
 async function cronHandler(req, res, db) {
   if (!isCronAuthorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
   if (!TON_RECEIVE_ADDRESS) return res.status(500).json({ ok: false, error: 'TON_RECEIVE_ADDRESS not set' });
-  const txs = await fetchRecentTonTransactions(100);
+  let txs;
+  try { txs = await fetchRecentTonTransactions(100); }
+  catch (e) { console.error('checkDeposits: toncenter failed:', e?.message); return res.status(502).json({ ok: false, error: 'toncenter_failed', detail: String(e?.message || e).slice(0, 200) }); }
   const out = await checkTaskCreate(db, txs, new Date());
   return res.status(200).json({ ok: true, ...out });
 }
