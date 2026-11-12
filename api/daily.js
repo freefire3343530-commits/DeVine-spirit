@@ -1,4 +1,5 @@
 import { cyInc, cyMin } from '../lib/cycleStats.js';
+import { refCheck } from '../lib/refReward.js';
 import { getDb } from '../lib/mongodb.js';
 import { verifyTelegramInit } from '../lib/auth.js';
 import { bdTodayKey } from '../lib/dateUtils.js';
@@ -146,6 +147,7 @@ export default async function handler(req, res) {
       );
       const updated = result?.value || result;
       if (!updated) return res.status(400).json({ error: 'Not enough $Devine.' });
+      await refCheck(db, updated); // referral rewards: friend bought his 1st Spirit / Spirit No.3
       return res.status(200).json({ success: true, spirits: updated.spirits, spiritClaims: updated.spiritClaims || {}, balance: updated.egBalance });
     }
 
