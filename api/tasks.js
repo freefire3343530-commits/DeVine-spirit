@@ -8,7 +8,7 @@ import { ObjectId } from 'mongodb';
 import crypto from 'crypto';
 import { isMember } from '../lib/tg.js';
 import { bdTodayKey } from '../lib/dateUtils.js';
-import { refCheck, MILESTONES } from '../lib/refReward.js';
+import { refCheck, REF, REF_TOTAL } from '../lib/refReward.js';
 
 // Pagination (cursor style): the app asks for ONE small page at a time and gets a `nextCursor` back.
 //  - never skip(): "give me 20 after this one" uses the index and costs the same on page 1 or page 500
@@ -21,7 +21,7 @@ const TASK_MIN_WAIT_SECONDS = 7; // the app makes people wait 8s before Claim; t
 const signTask = (tgId, taskId, t) =>
   crypto.createHmac('sha256', crypto.createHash('sha256').update('taskstart:' + process.env.BOT_TOKEN).digest()).update(`${tgId}:${taskId}:${t}`).digest('hex');
 
-const BOT_LINK = 'http://t.me/TonEdge_play_bot/playearn';
+const BOT_LINK = 'http://t.me/DeVine_spirit_bot/OpenPlay';
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -60,9 +60,9 @@ export default async function handler(req, res) {
           totalReferred: user.totalReferred || 0,
           totalRefEarnedEG: user.totalRefEarnedEG || 0,
           activeReferrals: user.activeReferrals || 0,
-          refMsPaid: user.refMsPaid || 0,
-          milestones: MILESTONES,
-          steps: { join: pick('join'), tasks: pick('tasks'), g1: pick('g1'), g2: pick('g2'), ms: pick('ms') },
+          rewards: REF,
+          rewardTotal: REF_TOTAL,
+          steps: { join: pick('join'), tasks: pick('tasks'), spirit1: pick('spirit1'), spirit3: pick('spirit3'), ads: pick('ads'), adsTask: pick('adsTask'), refs: pick('refs'), g1: pick('g1'), g2: pick('g2') },
         });
       }
 
@@ -163,7 +163,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Task already completed.' });
       }
 
-      await refCheck(db, updated); // referral milestone: friend finished 10 tasks
+      await refCheck(db, updated); // referral reward: friend finished 10 tasks
       return res.status(200).json({ success: true, reward: task.reward, balance: updated.egBalance });
     }
 
