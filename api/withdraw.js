@@ -163,6 +163,7 @@ async function handleCreate(req, res, db) {
     username: user.username || '',
     firstName: user.firstName || '',
     method: 'tonkeeper',
+    network: 'TON', token: 'USDT',   // what the player will receive (shown in Payout Proof once paid)
     address,
     egAmount: amount,
     grossUsdt: parseFloat(grossUsdt.toFixed(4)),
