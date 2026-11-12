@@ -17,7 +17,7 @@ import { checkReferralVelocity, alertIpSignupVelocity } from '../lib/velocity.js
 import { getClientIp, checkDevice, claimDevice, claimDeviceForUser, getOwnerPublicInfo, registryKey, recordSignupAndCheckVelocity, IP_SIGNUP_VELOCITY_THRESHOLD } from '../lib/ipRegistry.js';
 import { checkAndRecordFingerprint } from '../lib/fingerprintCheck.js';
 import { isRegistryBanned } from '../lib/banRegistry.js';
-import { REF } from '../lib/refReward.js';
+import { REF, refCheck } from '../lib/refReward.js';
 
 const MAX_IP_SWITCHES = 2;
 
@@ -172,17 +172,19 @@ export default async function handler(req, res) {
         const referrer = await users.findOne({ referCode });
         if (referrer && referrer.telegramId !== tgId) {
           newUser.referredBy = referrer.telegramId;
-          newUser.refProg = { join: true };        // marks a friend of the NEW referral system (see lib/refReward.js)
+          newUser.refProg = { join: true, v: 2 };   // marks a friend of the NEW referral system (see lib/refReward.js)
           const payJoin = !referrer.isBanned && !referrer.accountLocked && !newUser.accountLocked;
           if (payJoin) newUser.refBonusGenerated = REF.join;
           // also remember WHEN each signup happened (last 50) so referral velocity can be measured
           const after = await users.findOneAndUpdate(
             { telegramId: referrer.telegramId },
-            { $inc: { totalReferred: 1, ...(payJoin ? { egBalance: REF.join, totalRefEarnedEG: REF.join, 'refStats.join.n': 1, 'refStats.join.mm': REF.join, ...cyInc('refJoin', REF.join) } : {}) }, ...(payJoin ? { $min: cyMin() } : {}), // +50 $Devine for the join; the other milestones are paid later by lib/refReward.js
+            { $inc: { totalReferred: 1, ...(payJoin ? { egBalance: REF.join, totalRefEarnedEG: REF.join, 'refStats.join.n': 1, 'refStats.join.mm': REF.join, ...cyInc('refJoin', REF.join) } : {}) }, ...(payJoin ? { $min: cyMin() } : {}), // +100 $Devine for the join; the other milestones are paid later by lib/refReward.js
               $push: { recentReferralSignups: { $each: [new Date()], $slice: -50 } } },
             { returnDocument: 'after' }
           );
-          checkReferralVelocity(db, after?.value !== undefined ? after.value : after).catch(() => {}); // alert-only, never blocks the signup
+          const refDoc = after?.value !== undefined ? after.value : after;
+          checkReferralVelocity(db, refDoc).catch(() => {}); // alert-only, never blocks the signup
+          refCheck(db, refDoc).catch(() => {});               // the referrer himself may just have reached 20 friends -> his own referrer gets +1000
         }
       }
 
