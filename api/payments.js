@@ -10,7 +10,7 @@ import { ObjectId } from 'mongodb';
 import { tgSend, checkBotAdmin } from '../lib/tg.js';
 import { verifyTelegramInit } from '../lib/auth.js';
 import { isCronAuthorized } from '../lib/cronAuth.js';
-import { TON_RECEIVE_ADDRESS, randomTonMemo, buildTonDeepLink, fetchRecentTonTransactions } from '../lib/tonPay.js';
+import { TON_RECEIVE_ADDRESS, randomTonMemo, buildTonDeepLink, fetchRecentTonTransactions, tonAddressLooksValid, tonDiag } from '../lib/tonPay.js';
 
 // ===== EDIT HERE =====
 export const TASK_REWARD_MM = 10;            // $Devine every completion of a user-created task pays
@@ -153,12 +153,22 @@ export default async function handler(req, res) {
 // ── cron: verify payments on-chain ───────────────────────────────
 async function cronHandler(req, res, db) {
   if (!isCronAuthorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
-  if (!TON_RECEIVE_ADDRESS) return res.status(500).json({ ok: false, error: 'TON_RECEIVE_ADDRESS not set' });
+  if (!TON_RECEIVE_ADDRESS) return res.status(500).json({ ok: false, error: 'TON_RECEIVE_ADDRESS not set', hint: 'Set TON_RECEIVE_ADDRESS in the Render environment.' });
+  if (!tonAddressLooksValid()) return res.status(500).json({ ok: false, error: 'bad_ton_address', hint: 'TON_RECEIVE_ADDRESS is not a TON address (a friendly address is 48 characters and starts with EQ or UQ).', config: tonDiag() });
   let txs;
   try { txs = await fetchRecentTonTransactions(100); }
-  catch (e) { console.error('checkDeposits: toncenter failed:', e?.message); return res.status(503).json({ ok: false, error: 'toncenter_failed', detail: String(e?.message || e).slice(0, 400) }); } // 503 (not 502) so it is never confused with a Render gateway error
+  catch (e) {
+    const msg = String(e?.message || e);
+    console.error('checkDeposits: toncenter failed:', msg);
+    const hint = /http 422|parse address/i.test(msg) ? 'toncenter does not accept TON_RECEIVE_ADDRESS: check the address.'
+      : /http 429/.test(msg) ? 'toncenter rate limit: set a valid TONCENTER_API_KEY (free from @tonapibot).'
+      : /http 5\d\d|abort|fetch failed|timeout|ENOTFOUND|ECONN/i.test(msg) ? 'toncenter itself is failing or slow right now. Nothing is lost: the next cron run (1 minute) tries again.'
+      : null;
+    // 503 (not 502) so it is never confused with a Render gateway error
+    return res.status(503).json({ ok: false, error: 'toncenter_failed', hint, detail: msg.slice(0, 400), config: tonDiag() });
+  }
   const out = await checkTaskCreate(db, txs, new Date());
-  return res.status(200).json({ ok: true, provider: txs.provider || null, ...out });
+  return res.status(200).json({ ok: true, provider: txs.provider || null, ...out, ...(tonDiag().apiKeyRejectedByToncenter ? { warning: 'TONCENTER_API_KEY was rejected by toncenter; running without a key. Create a new key at @tonapibot.' } : {}) });
 }
 
 const MIN_PKG = Math.min(...Object.values(TASK_PACKAGES).map(p => p.priceNanoTon));
