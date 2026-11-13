@@ -156,9 +156,9 @@ async function cronHandler(req, res, db) {
   if (!TON_RECEIVE_ADDRESS) return res.status(500).json({ ok: false, error: 'TON_RECEIVE_ADDRESS not set' });
   let txs;
   try { txs = await fetchRecentTonTransactions(100); }
-  catch (e) { console.error('checkDeposits: toncenter failed:', e?.message); return res.status(502).json({ ok: false, error: 'toncenter_failed', detail: String(e?.message || e).slice(0, 200) }); }
+  catch (e) { console.error('checkDeposits: toncenter failed:', e?.message); return res.status(503).json({ ok: false, error: 'toncenter_failed', detail: String(e?.message || e).slice(0, 400) }); } // 503 (not 502) so it is never confused with a Render gateway error
   const out = await checkTaskCreate(db, txs, new Date());
-  return res.status(200).json({ ok: true, ...out });
+  return res.status(200).json({ ok: true, provider: txs.provider || null, ...out });
 }
 
 const MIN_PKG = Math.min(...Object.values(TASK_PACKAGES).map(p => p.priceNanoTon));
@@ -170,11 +170,32 @@ const REASONS = {
   order_too_old: 'Order expired more than 7 days ago',
 };
 
+// Builds the task of a PAID order. Safe to call any number of times: the task id is derived from the order id and the insert is an
+// upsert, so the same order can never produce two tasks. Returns true only when the task was really created by this call.
+async function createTaskForOrder(orders, tasks, o, now) {
+  const taskDoc = { title: o.draft.title, link: o.draft.url, reward: TASK_REWARD_MM,
+    maxCompletions: o.taskCount, completedCount: 0, type: o.draft.verifyType || 'link', category: 'exclusive', verifyType: o.draft.verifyType || 'link', channelId: o.draft.channelId || null,
+    active: false, reviewStatus: 'pending_review',
+    isUserCreated: true, createdBy: o.userId, createdAt: now };
+  const taskId = 'task_' + String(o._id);
+  const up = await tasks.updateOne({ id: taskId }, { $setOnInsert: taskDoc }, { upsert: true });
+  await orders.updateOne({ _id: o._id }, { $set: { createdTaskId: taskId } });
+  if (!up.upsertedCount) return false;   // already existed: do not notify twice
+  tgSend(o.userId, `✅ <b>Payment Confirmed!</b>\n\n📋 ${esc(taskDoc.title)}\n👥 ${taskDoc.maxCompletions} people can complete it (+${TASK_REWARD_MM} $Devine each)\n\n⏳ Waiting for admin review — once approved it goes live in the Tasks tab. 🎉`).catch(() => {});
+  if (ADMIN_ID) tgSend(ADMIN_ID, `🆕 <b>New Task Waiting for Review</b>\n\n📋 ${esc(taskDoc.title)}\n🔗 ${esc(taskDoc.link)}\n👥 ${taskDoc.maxCompletions} slots · 💰 ${TASK_REWARD_MM} $Devine/person\n\nOpen "🕐 Pending Review" in the admin panel.`).catch(() => {});
+  return true;
+}
+
 async function checkTaskCreate(db, txs, now) {
   const orders = db.collection('taskCreateOrders');
   const tasks = db.collection('tasks');
   const unmatched = db.collection('unmatchedTonDeposits');
   const expired = await orders.updateMany({ status: 'pending', expiresAt: { $lte: now } }, { $set: { status: 'expired', expiredAt: now } });
+
+  // Self-heal: "paid" but no task yet (server crashed or DB failed between the two steps). Waits 2 min so it never races a run still in progress.
+  let recovered = 0;
+  const stuck = await orders.find({ status: 'paid', createdTaskId: { $exists: false }, paidAt: { $lte: new Date(now.getTime() - 2 * 60000) } }).limit(20).toArray();
+  for (const o of stuck) if (await createTaskForOrder(orders, tasks, o, now)) recovered++;
 
   const incoming = [];
   for (const tx of txs) {
@@ -186,7 +207,7 @@ async function checkTaskCreate(db, txs, now) {
     const tokens = text.toUpperCase().split(/[^A-Z0-9]+/).filter(t => t.startsWith('TC') && t.length >= 4);
     incoming.push({ value, text, tokens, hash: tx.transaction_id?.hash || null, source: m.source });
   }
-  if (!incoming.length) return { expired: expired.modifiedCount, matched: 0, flagged: 0 };
+  if (!incoming.length) return { scanned: txs.length, expired: expired.modifiedCount, matched: 0, recovered, flagged: 0 };
 
   const memos = [...new Set(incoming.flatMap(i => i.tokens))];
   const byMemo = new Map((memos.length ? await orders.find({ memo: { $in: memos } }).toArray() : []).map(o => [o.memo, o]));
@@ -225,15 +246,7 @@ async function checkTaskCreate(db, txs, now) {
     const o = claimed?.value !== undefined ? claimed.value : claimed;
     if (!o) continue;
 
-    const taskDoc = { id: 'task_' + Date.now() + '_' + String(o._id).slice(-4), title: o.draft.title, link: o.draft.url, reward: TASK_REWARD_MM,
-      maxCompletions: o.taskCount, completedCount: 0, type: o.draft.verifyType || 'link', category: 'exclusive', verifyType: o.draft.verifyType || 'link', channelId: o.draft.channelId || null,
-      active: false, reviewStatus: 'pending_review',
-      isUserCreated: true, createdBy: o.userId, createdAt: now };
-    const ins = await tasks.insertOne(taskDoc);
-    await orders.updateOne({ _id: o._id }, { $set: { createdTaskId: ins.insertedId } });
-    matched++;
-    tgSend(o.userId, `✅ <b>Payment Confirmed!</b>\n\n📋 ${esc(taskDoc.title)}\n👥 ${taskDoc.maxCompletions} people can complete it (+${TASK_REWARD_MM} $Devine each)\n\n⏳ Waiting for admin review — once approved it goes live in the Tasks tab. 🎉`).catch(() => {});
-    if (ADMIN_ID) tgSend(ADMIN_ID, `🆕 <b>New Task Waiting for Review</b>\n\n📋 ${esc(taskDoc.title)}\n🔗 ${esc(taskDoc.link)}\n👥 ${taskDoc.maxCompletions} slots · 💰 ${TASK_REWARD_MM} $Devine/person\n\nOpen "🕐 Pending Review" in the admin panel.`).catch(() => {});
+    if (await createTaskForOrder(orders, tasks, o, now)) matched++;
   }
-  return { expired: expired.modifiedCount, matched, flagged };
+  return { scanned: txs.length, expired: expired.modifiedCount, matched, recovered, flagged };
 }
