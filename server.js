@@ -14,6 +14,7 @@ import payments from './api/payments.js';
 import cron from './api/cron.js';
 import logo from './api/logo.js';
 import payouts from './api/payouts.js';
+import { getDb } from './lib/mongodb.js';
 
 const app = express();
 app.set('trust proxy', true); // so x-forwarded-for / IP checks work behind the host's proxy
@@ -53,4 +54,11 @@ app.use((err, _req, res, _next) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`DeVine Spirit API listening on :${port}`));
+app.listen(port, () => {
+  console.log(`DeVine Spirit API listening on :${port}`);
+  getDb().then(() => console.log('MongoDB connected (warm)')).catch((e) => console.error('MongoDB warm-up failed:', e.message)); // first tap is no longer slow
+  // Keep-awake ping while the server is up. NOTE: a sleeping free server cannot wake itself, so ALSO add an
+  // external pinger (UptimeRobot / cron-job.org) hitting <your-url>/health every 5 minutes.
+  const self = (process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+  if (self) setInterval(() => fetch(`${self}/health`).catch(() => {}), 4 * 60 * 1000).unref?.();
+});
