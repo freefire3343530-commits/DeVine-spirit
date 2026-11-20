@@ -16,19 +16,20 @@ const LOGIN_BONUS = [10, 20, 40, 70, 100, 150, 300];
 // hours  = hours between two claims (each spirit has its own timer)
 // The spirit must be at 100% health (fed, watered/charged, clean, happy) at the moment of the claim.
 // Keep this table in sync with SPIRIT_CFG in index.html (the app only uses it to show prices/timers).
+// foodPrice = $Devine per food item of that spirit (the Watch-Ad option is always free).
 const SPIRIT_CFG = {
-  leaf: { price: 0,     reward: 100,  hours: 3  },   // Spirit 1 (free)
-  moon: { price: 3000,  reward: 300,  hours: 6  },   // Spirit 2
-  fire: { price: 8000,  reward: 500,  hours: 8  },   // Spirit 3
-  sun:  { price: 20000, reward: 1000, hours: 12 },   // Spirit 4
-  star: { price: 50000, reward: 2000, hours: 24 },   // Spirit 5
+  leaf: { price: 0,     reward: 100,  hours: 3,  foodPrice: 10  },   // Spirit 1 (free)
+  moon: { price: 3000,  reward: 300,  hours: 6,  foodPrice: 20  },   // Spirit 2 Lunaling
+  fire: { price: 8000,  reward: 500,  hours: 8,  foodPrice: 50  },   // Spirit 3 Emberling
+  sun:  { price: 20000, reward: 800,  hours: 12, foodPrice: 100 },   // Spirit 4 Sunling
+  star: { price: 50000, reward: 1000, hours: 12, foodPrice: 150 },   // Spirit 5 Starling
 };
 // ===== Spirit care + 3-hour reward cycle: all rules live in lib/spiritCare.js (statuses, decay, rewards, shower bonus, shop prices) =====
 // The ad (Adsgram interstitial int-60809) is checked here with a signed one-time token.
 const CARE_AD_MIN_SECONDS = 4;        // an ad cannot be finished faster than this after the server issued the token
 const CARE_AD_MAX_SECONDS = 900;      // token expires
-const careSign = (tgId, kind, t) =>
-  crypto.createHmac('sha256', crypto.createHash('sha256').update('caretoken:' + process.env.BOT_TOKEN).digest()).update(`${tgId}:${kind}:${t}`).digest('hex');
+const careSign = (tgId, kind, t, spiritId = 'leaf') =>
+  crypto.createHmac('sha256', crypto.createHash('sha256').update('caretoken:' + process.env.BOT_TOKEN).digest()).update(spiritId === 'leaf' ? `${tgId}:${kind}:${t}` : `${tgId}:${kind}:${spiritId}:${t}`).digest('hex');
 // =======================================================
 
 export default async function handler(req, res) {
@@ -183,7 +184,7 @@ export default async function handler(req, res) {
         const kind = String(req.body.kind || '');
         if (!['food', 'shower', 'claim'].includes(kind)) return res.status(400).json({ error: 'Invalid kind.' });
         const t = clock.now();
-        return res.status(200).json({ success: true, startTime: t, signature: careSign(tgId, kind, t) });
+        return res.status(200).json({ success: true, startTime: t, signature: careSign(tgId, kind, t, id) });
       }
 
       const kind = CARE_ACTIONS[action];
@@ -193,7 +194,7 @@ export default async function handler(req, res) {
       if (pay === 'ad' && (kind === 'food' || kind === 'shower' || kind === 'claim')) {
         adStart = Number(req.body.startTime);
         if (!adStart || !req.body.signature) return res.status(400).json({ error: kind === 'claim' ? 'ad_required' : 'missing_ad_token' });
-        if (careSign(tgId, kind, adStart) !== req.body.signature) return res.status(400).json({ error: 'invalid_ad_token' });
+        if (careSign(tgId, kind, adStart, id) !== req.body.signature) return res.status(400).json({ error: 'invalid_ad_token' });
         const elapsed = (clock.now() - adStart) / 1000;
         if (!(elapsed >= CARE_AD_MIN_SECONDS)) return res.status(400).json({ error: 'watch_time_too_short' });
         if (elapsed > CARE_AD_MAX_SECONDS) return res.status(400).json({ error: 'ad_token_expired' });
