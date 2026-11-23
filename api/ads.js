@@ -8,6 +8,8 @@ import { bdTodayKey } from '../lib/dateUtils.js';
 import crypto from 'crypto';
 import { refCheck } from '../lib/refReward.js';
 import { detectBotPattern, lockForBotPattern, AD_CLAIM_HISTORY_KEEP } from '../lib/botGuard.js';
+import { trapHit, decoyFieldsIn } from '../lib/traps.js';
+import { humanNeeded } from '../lib/humanCheck.js';
 
 // Anti-cheat (ported from NEWTUBE): the app must call action:'start' when an ad is tapped; the server signs
 // the start time. A claim is only paid if the signed token is genuine, one-time, fresh, and the ad was on screen long enough.
@@ -110,9 +112,12 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     const { network, action, startTime, signature, viewMs } = req.body;
+    const decoys = decoyFieldsIn(req.body); // 🪤 the app never sends a reward / amount field with an ad
+    if (decoys.length) { await trapHit(db, tgId, 'tampered_request', `ads: ${decoys.join(',')}`); return res.status(400).json({ error: 'Bad request' }); }
     const cfg = AD_NETWORKS[network];
-    if (!cfg) return res.status(400).json({ error: 'Invalid network' });
+    if (!cfg) { await trapHit(db, tgId, 'bad_ad_network', String(network).slice(0, 40)); return res.status(400).json({ error: 'Invalid network' }); }
     if (user.accountLocked) return res.status(403).json({ error: 'account_locked' });
+    if (humanNeeded(user, 'claim')) return res.status(403).json({ error: 'human_check_required' }); // 🧑 bot fighter
 
     // step 1: tap -> server issues a signed start token
     if (action === 'start') {
@@ -141,8 +146,11 @@ export default async function handler(req, res) {
     const sample = { s: startNum, c: Date.now(), w: Math.round(elapsed * 10) / 10, v: Math.round((cfg.noView ? elapsed : view) * 10) / 10 };
     if (!cfg.noView) {
       const hit = detectBotPattern([...(user.recentAdClaims || []), sample]);
-      if (hit && await lockForBotPattern(db, tgId, hit, `Network: ${network}`, [...(user.recentAdClaims || []), sample]))
-        return res.status(403).json({ error: 'account_locked' });
+      if (hit) {
+        const lk = await lockForBotPattern(db, tgId, hit, `Network: ${network}`, [...(user.recentAdClaims || []), sample]);
+        if (lk === true) return res.status(403).json({ error: 'account_locked' });
+        if (lk === 'human') return res.status(403).json({ error: 'human_check_required' });
+      }
     }
 
     // Adsgram S2S: only pay when Adsgram's own server confirmed this ad (credit created by handleS2S). Reserve it atomically.
