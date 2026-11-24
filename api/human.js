@@ -29,8 +29,8 @@ export default async function handler(req, res) {
   if (r.ok) {
     // each question can be used only once (replay protection): the nonce must differ from the last one used
     const u = await users.updateOne(
-      { telegramId: tgId, humanLastNonce: { $ne: r.nonce } },
-      { $set: { humanOkAt: new Date(), humanLastNonce: r.nonce, humanFails: 0 }, $unset: { humanRequired: '', humanRequiredAt: '' } }
+      { telegramId: tgId, humanLastNonce: { $ne: r.nonce }, humanNonces: { $ne: r.nonce } },   // not the last one AND not any of the last 20 (A,B,A replay)
+      { $set: { humanOkAt: new Date(), humanLastNonce: r.nonce, humanFails: 0 }, $push: { humanNonces: { $each: [r.nonce], $slice: -20 } }, $unset: { humanRequired: '', humanRequiredAt: '' } }
     );
     if (u.modifiedCount > 0) return res.status(200).json({ ok: true });
     r.ok = false; r.reason = 'wrong';
