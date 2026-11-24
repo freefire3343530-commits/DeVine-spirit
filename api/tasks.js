@@ -100,6 +100,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { taskId, action, startTime, signature } = req.body;
       if (!taskId) return res.status(400).json({ error: 'taskId required' });
+      if (typeof taskId !== 'string' || taskId.length > 100) return res.status(400).json({ error: 'bad_request' }); // never let an object ({"$ne":..}) reach a Mongo filter
 
       const task = await tasksCol.findOne({ id: taskId, active: true });
       if (!task) return res.status(404).json({ error: 'Task not found' });
