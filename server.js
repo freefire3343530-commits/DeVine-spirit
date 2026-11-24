@@ -16,9 +16,11 @@ import cron from './api/cron.js';
 import logo from './api/logo.js';
 import payouts from './api/payouts.js';
 import human from './api/human.js';
+import adcredit from './api/adcredit.js';
 import { shieldIp, shieldUser } from './lib/shield.js';
 import { HONEYPOT_PATHS, honeypotHit } from './lib/traps.js';
 import { verifyTelegramInit } from './lib/auth.js';
+import { sanitizeInput } from './lib/sanitize.js';
 import { getDb } from './lib/mongodb.js';
 
 // A bug or a hacker's weird request must NEVER kill the server: log it and keep running.
@@ -47,9 +49,10 @@ app.get('/health', (_req, res) => res.json({ ok: true, t: Date.now() }));
 
 app.use(shieldIp);                                  // 🛡 1: webhook secret + per-IP limit (before the body is even read)
 app.use(express.json({ limit: '64kb' }));           // nobody needs a bigger body, and big bodies are a cheap way to hurt a small server
+app.use(sanitizeInput);                             // 🧼 no Mongo-operator injection ($ne, $regex ...) in body or query
 app.use(shieldUser);                                // 🛡 2: per-user limit (100/min) + fake-session limit
 
-const routes = { user, tasks, daily, withdraw, bot, payments, cron, logo, payouts, human };
+const routes = { user, tasks, daily, withdraw, bot, payments, cron, logo, payouts, human, adcredit };
 app.all('/api/:name', async (req, res) => {
   const name = req.params.name;
   const handler = Object.prototype.hasOwnProperty.call(routes, name) ? routes[name] : null; // 'constructor' & co. are not routes
