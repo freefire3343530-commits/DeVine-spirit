@@ -1,3 +1,6 @@
+// ⛔ LEGACY / NOT MOUNTED. This file is deliberately NOT in server.js `routes`. The live app never calls /api/ads (ad rewards run through
+// api/daily.js). DO NOT mount it: it contains reward paths (daily_gigapub, daily_adsgram ...) that no screen of the app uses, and
+// mounting it would open unverified reward faucets that anyone could call by hand. Ad confirmation now lives in api/adcredit.js.
 // FILE PATH: api/ads.js
 // (GitHub repo te ei path e file ta rakhbe: api/ads.js)
 
