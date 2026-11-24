@@ -168,27 +168,47 @@ export default async function handler(req, res) {
       }
       alertIpSignupVelocity(clientIp, ipSignups, tgId); // tells the admin (first time + every 10th)
 
-      if (referCode) {
-        const referrer = await users.findOne({ referCode });
-        if (referrer && referrer.telegramId !== tgId) {
-          newUser.referredBy = referrer.telegramId;
-          newUser.refProg = { join: true, v: 2 };   // marks a friend of the NEW referral system (see lib/refReward.js)
-          const payJoin = !referrer.isBanned && !referrer.accountLocked && !newUser.accountLocked;
-          if (payJoin) newUser.refBonusGenerated = REF.join;
-          // also remember WHEN each signup happened (last 50) so referral velocity can be measured
-          const after = await users.findOneAndUpdate(
-            { telegramId: referrer.telegramId },
-            { $inc: { totalReferred: 1, ...(payJoin ? { egBalance: REF.join, totalRefEarnedEG: REF.join, 'refStats.join.n': 1, 'refStats.join.mm': REF.join, ...cyInc('refJoin', REF.join) } : {}) }, ...(payJoin ? { $min: cyMin() } : {}), // +100 $Devine for the join; the other milestones are paid later by lib/refReward.js
-              $push: { recentReferralSignups: { $each: [new Date()], $slice: -50 } } },
-            { returnDocument: 'after' }
-          );
-          const refDoc = after?.value !== undefined ? after.value : after;
-          checkReferralVelocity(db, refDoc).catch(() => {}); // alert-only, never blocks the signup
-          refCheck(db, refDoc).catch(() => {});               // the referrer himself may just have reached 20 friends -> his own referrer gets +1000
-        }
+      // 1) find the referrer (READ ONLY here, nobody is paid yet). referCode must be a plain string: an object like
+      //    {"$ne":""} would otherwise become a Mongo operator and pick a random referrer.
+      let referrer = null;
+      if (typeof referCode === 'string' && /^[A-Za-z0-9]{4,32}$/.test(referCode)) {
+        referrer = await users.findOne({ referCode });
+        if (referrer && referrer.telegramId === tgId) referrer = null;
+      }
+      let payJoin = false;
+      if (referrer) {
+        newUser.referredBy = referrer.telegramId;
+        newUser.refProg = { join: true, v: 2 };   // marks a friend of the NEW referral system (see lib/refReward.js)
+        payJoin = !referrer.isBanned && !referrer.accountLocked && !newUser.accountLocked;
+        if (payJoin) newUser.refBonusGenerated = REF.join;
       }
 
-      await users.insertOne(newUser);
+      // 2) CREATE THE ACCOUNT FIRST. users.telegramId is unique, so when several first-open requests of the same person
+      //    arrive at the same time (double tap, retry, script) exactly ONE insert wins. The old order (pay the referrer, then
+      //    insert) paid the referrer once per request. The losers simply return the account the winner created.
+      try {
+        await users.insertOne(newUser);
+      } catch (e) {
+        if (e?.code === 11000) {
+          const again = await users.findOne({ telegramId: tgId });
+          return res.status(200).json({ success: true, user: again, isNew: false });
+        }
+        throw e;
+      }
+
+      // 3) only the request that really created the account pays the referrer (once)
+      if (referrer) {
+        // also remember WHEN each signup happened (last 50) so referral velocity can be measured
+        const after = await users.findOneAndUpdate(
+          { telegramId: referrer.telegramId },
+          { $inc: { totalReferred: 1, ...(payJoin ? { egBalance: REF.join, totalRefEarnedEG: REF.join, 'refStats.join.n': 1, 'refStats.join.mm': REF.join, ...cyInc('refJoin', REF.join) } : {}) }, ...(payJoin ? { $min: cyMin() } : {}), // +100 $Devine for the join; the other milestones are paid later by lib/refReward.js
+            $push: { recentReferralSignups: { $each: [new Date()], $slice: -50 } } },
+          { returnDocument: 'after' }
+        );
+        const refDoc = after?.value !== undefined ? after.value : after;
+        checkReferralVelocity(db, refDoc).catch(() => {}); // alert-only, never blocks the signup
+        refCheck(db, refDoc).catch(() => {});               // the referrer himself may just have reached 20 friends -> his own referrer gets +1000
+      }
       const devKey = registryKey(fp, clientIp);
       if (devKey && !devKey.startsWith('ip:')) { const c = await checkDevice(db, fp, clientIp, tgId); if (c.unclaimed) await claimDevice(db, devKey, tgId); }
       checkAndRecordFingerprint(db, tgId, fp).catch(() => {});
