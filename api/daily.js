@@ -14,16 +14,17 @@ const LOGIN_BONUS = [10, 20, 40, 70, 100, 150, 300];
 // ===== EDIT HERE: Spirit shop + rewards ($Devine) =====
 // price  = buy price in $Devine (0 = free plan)
 // reward = $Devine paid on every claim
+// reward = the MAXIMUM base points of one cycle (at 100% care). On top of it comes the flat +40 Shower bonus (BONUS in lib/spiritCare.js), same for all 5 spirits.
 // hours  = hours between two claims (each spirit has its own timer)
 // The spirit must be at 100% health (fed, watered/charged, clean, happy) at the moment of the claim.
 // Keep this table in sync with SPIRIT_CFG in index.html (the app only uses it to show prices/timers).
 // foodPrice = $Devine per food item of that spirit (the Watch-Ad option is always free).
 const SPIRIT_CFG = {
-  leaf: { price: 0,     reward: 100,  hours: 3,  foodPrice: 10  },   // Spirit 1 (free)
-  moon: { price: 3000,  reward: 300,  hours: 6,  foodPrice: 20  },   // Spirit 2 Lunaling
+  leaf: { price: 0,     reward: 60,   hours: 2,  foodPrice: 10  },   // Spirit 1 (free)
+  moon: { price: 3000,  reward: 100,  hours: 4,  foodPrice: 20  },   // Spirit 2 Lunaling
   fire: { price: 8000,  reward: 500,  hours: 8,  foodPrice: 50  },   // Spirit 3 Emberling
-  sun:  { price: 20000, reward: 800,  hours: 12, foodPrice: 100 },   // Spirit 4 Sunling
-  star: { price: 50000, reward: 1000, hours: 12, foodPrice: 150 },   // Spirit 5 Starling
+  sun:  { price: 20000, reward: 700,  hours: 12, foodPrice: 100 },   // Spirit 4 Sunling
+  star: { price: 50000, reward: 1000, hours: 24, foodPrice: 150 },   // Spirit 5 Starling
 };
 // ===== Spirit care + 3-hour reward cycle: all rules live in lib/spiritCare.js (statuses, decay, rewards, shower bonus, shop prices) =====
 // The ad (Adsgram interstitial int-60809) is checked here with a signed one-time token.
