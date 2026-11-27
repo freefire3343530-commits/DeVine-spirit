@@ -62,7 +62,7 @@ export default async function handler(req, res) {
           activeReferrals: user.activeReferrals || 0,
           rewards: REF,
           rewardTotal: REF_TOTAL,
-          steps: { join: pick('join'), tasks: pick('tasks'), spirit1: pick('spirit1'), spirit3: pick('spirit3'), ads: pick('ads'), adsTask: pick('adsTask'), refs: pick('refs'), g1: pick('g1'), g2: pick('g2') },
+          steps: { join: pick('join'), tasks: pick('tasks'), spirit1: pick('spirit1'), spirit3: pick('spirit3'), ads: pick('ads'), g1: pick('g1'), g2: pick('g2') },
         });
       }
 
