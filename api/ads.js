@@ -1,6 +1,7 @@
-// ⛔ LEGACY / NOT MOUNTED. This file is deliberately NOT in server.js `routes`. The live app never calls /api/ads (ad rewards run through
-// api/daily.js). DO NOT mount it: it contains reward paths (daily_gigapub, daily_adsgram ...) that no screen of the app uses, and
-// mounting it would open unverified reward faucets that anyone could call by hand. Ad confirmation now lives in api/adcredit.js.
+// 📺 DAILY ADS (Tasks tab) — LIVE. Mounted in server.js.
+//   daily_adsgram_task : Adsgram Task block  task-60920   15 / day   (pinned on top of Tasks)
+//   daily_gigapub      : GigaPub rewarded ad (id 9406)    10 / day   30 $Devine
+//   daily_adsgram      : Adsgram rewarded block 60919     10 / day   40 $Devine
 // FILE PATH: api/ads.js
 // (GitHub repo te ei path e file ta rakhbe: api/ads.js)
 
@@ -16,9 +17,9 @@ import { humanNeeded } from '../lib/humanCheck.js';
 
 // Anti-cheat (ported from NEWTUBE): the app must call action:'start' when an ad is tapped; the server signs
 // the start time. A claim is only paid if the signed token is genuine, one-time, fresh, and the ad was on screen long enough.
-const MIN_WATCH_SECONDS = 10;     // min ad on-screen time
+const MIN_WATCH_SECONDS = 5;      // min ad on-screen time (short video ads exist, so a real ad is never rejected)
 const VIEW_TOLERANCE_SECONDS = 1.5;
-const COOLDOWN_SECONDS = 10;      // min gap between two claims
+const COOLDOWN_SECONDS = 5;       // min gap between two claims (same gap as the Spirit claim in api/farm.js)
 const TOKEN_MAX_AGE_SECONDS = 300;
 const signStart = (tgId, network, t) =>
   crypto.createHmac('sha256', crypto.createHash('sha256').update('adtoken:' + process.env.BOT_TOKEN).digest()).update(`${tgId}:${network}:${t}`).digest('hex');
@@ -26,33 +27,33 @@ const signStart = (tgId, network, t) =>
 // Play → Ad Tasks. Each network has its own daily watch limit and $Devine
 // reward per ad (100,000 $Devine = $1). Counters reset every day at Bangladesh midnight (bdTodayKey).
 const AD_NETWORKS = {
-  gigapub:       { label: 'GigaPub Ads',        limit: 5,  reward: 10 },
-  adsgram_init:  { label: 'AdsGram Ads',        limit: 5,  reward: 10 },
-
   // ===== Tasks → Daily ads (EDIT HERE: limit = times per day, reward = $Devine per ad) =====
-  // Adsgram Task block (task-56002): user completes an Adsgram task, no video view time needed.
-  daily_adsgram_task: { label: 'Adsgram Task', limit: 10, reward: 40, minWatch: 3, noView: true, tokenMaxAge: 1800, s2s: true },
-  // GigaPub rewarded ad
-  daily_gigapub:      { label: 'GigaPub Ad',   limit: 10, reward: 20 },
-  // Adsgram rewarded video (block id 37275)
-  daily_adsgram:      { label: 'Adsgram Ad',   limit: 10, reward: 20, s2s: true },
+  // Adsgram Task block (task-60920): user completes an Adsgram task, no video view time needed.
+  daily_adsgram_task: { label: 'Adsgram Task', limit: 15, reward: 40, minWatch: 3, noView: true, tokenMaxAge: 1800, s2s: true, pool: 'daily_adsgram_task' },
+  // GigaPub rewarded ad (script id 9406)
+  daily_gigapub:      { label: 'GigaPub Ad',   limit: 10, reward: 30 },
+  // Adsgram rewarded video (block id 60919). Same block as the Spirit reward claim, so its credits come from the shared 'care' pool (api/adcredit.js).
+  daily_adsgram:      { label: 'Adsgram Ad',   limit: 10, reward: 40, s2s: true, pool: 'care' },
   // =====================================================================================
 };
 
 
-// ===== ADSGRAM S2S (server-to-server reward confirmation) =====
-// Adsgram calls  GET /api/ads?s2s=1&network=<network>&userid=[userId]&secret=<ADSGRAM_S2S_SECRET>  after a user finishes an ad.
-// We store one "credit". The app can only be paid for an Adsgram ad when a fresh credit from Adsgram exists for that user.
-// Env (Render):  ADSGRAM_S2S_SECRET = any long random text (also written inside the Reward URL in the Adsgram dashboard)
-//                ADSGRAM_S2S_OFF    = optional, comma list of networks to NOT enforce, e.g. daily_adsgram_task
+// ===== ADSGRAM S2S (server-to-server reward confirmation) — OPT-IN, OFF = nothing changes =====
+// Adsgram calls a "Reward URL" itself when a user FINISHES an ad. We store one "credit"; the app is only paid when a fresh credit exists.
+//   Block 60919 (rewarded video; also used by the Spirit claim)  -> Reward URL: https://<server>/api/adcredit?userid=[userId]&secret=<ADSGRAM_S2S_SECRET>
+//                                                                   switch on with  CARE_AD_S2S=1  (pool 'care', shared with api/farm.js)
+//   Task block task-60920                                         -> Reward URL: https://<server>/api/ads?s2s=1&network=daily_adsgram_task&userid=[userId]&secret=<ADSGRAM_S2S_SECRET>
+//                                                                   switch on with  TASK_AD_S2S=1
+// Env (Render):  ADSGRAM_S2S_SECRET = long random text (also written inside the Reward URLs in the Adsgram dashboard)
 const safeEq = (a, b) => {
   const x = crypto.createHash('sha256').update(String(a)).digest();
   const y = crypto.createHash('sha256').update(String(b)).digest();
   return crypto.timingSafeEqual(x, y);
 };
-const s2sEnforced = (network, cfg) =>
-  !!(cfg.s2s && process.env.ADSGRAM_S2S_SECRET &&
-     !String(process.env.ADSGRAM_S2S_OFF || '').split(',').map(v => v.trim()).includes(network));
+const s2sEnforced = (network, cfg) => {
+  if (!cfg.s2s || !process.env.ADSGRAM_S2S_SECRET) return false;
+  return cfg.pool === 'care' ? process.env.CARE_AD_S2S === '1' : process.env.TASK_AD_S2S === '1';
+};
 let s2sIndexDone = false;
 async function handleS2S(req, res) {
   const secret = process.env.ADSGRAM_S2S_SECRET;
@@ -60,7 +61,7 @@ async function handleS2S(req, res) {
   if (!safeEq(req.query.secret || '', secret)) return res.status(403).json({ error: 'forbidden' });
   const network = String(req.query.network || '');
   const cfg = AD_NETWORKS[network];
-  if (!cfg || !cfg.s2s) return res.status(400).json({ error: 'invalid_network' });
+  if (!cfg || !cfg.s2s || cfg.pool !== network) return res.status(400).json({ error: 'invalid_network' }); // block 60919 reports to /api/adcredit instead
   const userid = String(req.query.userid || '');
   if (!/^\d{3,15}$/.test(userid)) return res.status(400).json({ error: 'invalid_userid' });
   const db = await getDb();
@@ -160,9 +161,9 @@ export default async function handler(req, res) {
     let credit = null;
     if (s2sEnforced(network, cfg)) {
       const r = await db.collection('adsgramS2S').findOneAndUpdate(
-        { telegramId: tgId, network, used: false, at: { $gte: new Date(startNum - 3000) } },
+        { telegramId: tgId, network: cfg.pool || network, used: false, at: { $gte: new Date(startNum - 3000) } },
         { $set: { used: true, usedAt: new Date() } },
-        { sort: { at: 1 } }
+        { sort: { at: 1 }, returnDocument: 'before' }
       );
       credit = r?.value || r;
       if (!credit || !credit._id) return res.status(409).json({ error: 's2s_pending' }); // callback not here yet — app retries
