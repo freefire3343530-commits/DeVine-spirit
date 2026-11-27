@@ -31,6 +31,13 @@
       "continue": true
     },
     {
+      "src": "/assets/spirits/(.*)",
+      "headers": {
+        "cache-control": "public, max-age=86400, stale-while-revalidate=604800"
+      },
+      "continue": true
+    },
+    {
       "handle": "filesystem"
     },
     {
