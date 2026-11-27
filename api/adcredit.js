@@ -1,7 +1,7 @@
 // FILE PATH: api/adcredit.js
 // 📺 AD CONFIRMATION RECEIVER (server-to-server). Adsgram calls this URL itself when a user FINISHES a rewarded ad:
 //     GET https://<your-server>/api/adcredit?userid=[userId]&secret=<ADSGRAM_S2S_SECRET>
-// We store one "credit" for that user. api/daily.js (when CARE_AD_S2S=1) pays a care/claim action that needs an ad ONLY if it
+// We store one "credit" for that user. api/farm.js (when CARE_AD_S2S=1) pays a Spirit reward claim (which needs an ad) ONLY if it
 // can consume a fresh credit, so a script that never shows an ad (it only calls our API) can no longer earn.
 // A credit lives 1 day (TTL) and one user can hold at most 20 unused credits.
 //
