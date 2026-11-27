@@ -19,6 +19,8 @@ import payouts from './api/payouts.js';
 import human from './api/human.js';
 import adcredit from './api/adcredit.js';
 import ads from './api/ads.js';
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');   // avoids "fetch failed" when a host's IPv6 route to Telegram/Mongo is broken
 import { shieldIp, shieldUser } from './lib/shield.js';
 import { HONEYPOT_PATHS, honeypotHit } from './lib/traps.js';
 import { verifyTelegramInit } from './lib/auth.js';
