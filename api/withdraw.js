@@ -22,7 +22,7 @@ import { loadWdInfo, renderWdInfo, fmtBDFull } from '../lib/wdInfo.js';
 import { checkWithdrawBurst } from '../lib/wdBurst.js';
 
 // ===== EDIT HERE =====
-const MIN_WITHDRAW_EG = 5000;          // $Devine  (50,000 $Devine = $1  →  2,500 $Devine = $0.05)
+const MIN_WITHDRAW_EG = 5000;          // $Devine  (100,000 $Devine = $1  →  5,000 $Devine = $0.05)
 const EG_TO_USDT = 1 / 100000;
 const FEE_PERCENT = 5;
 const TASKS_REQUIRED = 0;              // lifetime tasks needed (0 = no task requirement)
