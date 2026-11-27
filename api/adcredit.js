@@ -7,7 +7,7 @@
 //
 // Render env:  ADSGRAM_S2S_SECRET = long random text (also written inside the Reward URL in the Adsgram dashboard)
 //              CARE_AD_S2S        = 1 turns the enforcement on in api/daily.js (OFF = old behaviour, nothing changes)
-// NOTE: Adsgram only sends this callback for REWARDED blocks. See PATCH_NOTES.md.
+// NOTE: Adsgram only sends this callback for REWARDED blocks. The Spirit claim + Feed/Bathe + daily Adsgram ad all use rewarded block 60919.
 import crypto from 'crypto';
 import { getDb } from '../lib/mongodb.js';
 
