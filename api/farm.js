@@ -1,11 +1,11 @@
 // FILE PATH: api/farm.js
 // 🌾 SPIRIT FARM — the Gram Edge Farm reward system, running the 5 Spirits (100% server-side).
 //   5 Spirits = 5 farms. Each pays a FIXED $Devine reward once per cycle (table: lib/spiritCfg.js).
-//   Buying a Spirit stays in api/daily.js (claimSpirit / buySpirit). Every claim needs one finished ad.
+//   Buying a Spirit stays in api/daily.js (claimSpirit / buySpirit). Every claim needs one finished ad: Adsgram block 60919 or GigaPub (picked at random by the app).
 //
 //   POST /api/farm { action:'state' }                                  -> every Spirit: owned, readyAt, reward
-//   POST /api/farm { action:'start', spiritId }                        -> signed ad token (call it when the ad is tapped)
-//   POST /api/farm { action:'claim', spiritId, startTime, signature }  -> pays cfg.reward once, starts the next cycle
+//   POST /api/farm { action:'start', spiritId, network }                       -> signed ad token (call it when the ad is tapped). network = 'adsgram' | 'gigapub'
+//   POST /api/farm { action:'claim', spiritId, network, startTime, signature } -> pays cfg.reward once, starts the next cycle
 //   GET  /api/farm?telegramId=..&initData=..                           -> same as 'state'
 //
 // Food / Shower / Water / Pet are NOT here any more: they live in the app (client side, paid with Gold) and never change the reward.
@@ -19,14 +19,15 @@ import { humanNeeded } from '../lib/humanCheck.js';
 import { SPIRIT_CFG, SPIRIT_IDS } from '../lib/spiritCfg.js';
 import { adS2SOn, takeAdCredit, giveCreditBack } from '../lib/adProof.js';
 
-// ===== EDIT HERE: ad anti-cheat (Adsgram interstitial int-60809 is short, so the minimum is small) =====
+// ===== EDIT HERE: ad anti-cheat (the ads are short, so the minimum is small) =====
 const MIN_WATCH_SECONDS = 4;       // an ad cannot be finished faster than this after the server issued the token
 const TOKEN_MAX_AGE_SECONDS = 900; // token expires
 const COOLDOWN_SECONDS = 5;        // min gap between two paid claims of one user
 // ========================================================================================================
 
-const signStart = (tgId, spiritId, t) =>
-  crypto.createHmac('sha256', crypto.createHash('sha256').update('farmtoken:' + process.env.BOT_TOKEN).digest()).update(`${tgId}:${spiritId}:${t}`).digest('hex');
+const AD_NETS = ['adsgram', 'gigapub'];   // Adsgram rewarded block 60919 (S2S-checkable) | GigaPub (no S2S)
+const signStart = (tgId, spiritId, t, net = 'adsgram') =>
+  crypto.createHmac('sha256', crypto.createHash('sha256').update('farmtoken:' + process.env.BOT_TOKEN).digest()).update(`${tgId}:${spiritId}:${net}:${t}`).digest('hex');
 const sigOk = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 const nextAtOf = (user, id) => { const v = user.spiritFarm?.[id]?.nextClaimAt; return v ? new Date(v).getTime() : 0; };
@@ -89,6 +90,8 @@ export default async function handler(req, res) {
   const id = String(req.body?.spiritId || '');
   if (!Object.prototype.hasOwnProperty.call(SPIRIT_CFG, id)) { await trapHit(db, tgId, 'bad_spirit_id', id.slice(0, 40)); return res.status(400).json({ error: 'Invalid spirit' }); }
   const cfg = SPIRIT_CFG[id];
+  const net = req.body?.network === undefined ? 'adsgram' : String(req.body.network);
+  if (!AD_NETS.includes(net)) { await trapHit(db, tgId, 'bad_ad_network', net.slice(0, 40)); return res.status(400).json({ error: 'Invalid network' }); }
   const p = `spiritFarm.${id}`;
 
   if (user.accountLocked) return res.status(403).json({ error: 'account_locked' });
@@ -99,14 +102,14 @@ export default async function handler(req, res) {
   // ── claim step 1: tap → server checks the Spirit is ready and signs a start token ──
   if (action === 'start') {
     const t = Date.now();
-    return res.status(200).json({ success: true, startTime: t, signature: signStart(tgId, id, t) });
+    return res.status(200).json({ success: true, startTime: t, signature: signStart(tgId, id, t, net) });
   }
 
   // ── claim step 2: verify the ad token + timing, then pay ──
   const startNum = Number(req.body?.startTime);
   const signature = req.body?.signature;
   if (!startNum || !signature) return res.status(400).json({ error: 'ad_required' });
-  if (!sigOk(signStart(tgId, id, startNum), signature)) return res.status(400).json({ error: 'invalid_ad_token' });
+  if (!sigOk(signStart(tgId, id, startNum, net), signature)) return res.status(400).json({ error: 'invalid_ad_token' });
   const elapsed = (Date.now() - startNum) / 1000;
   if (!(elapsed >= 0)) return res.status(400).json({ error: 'invalid_ad_token' });
   if (elapsed > TOKEN_MAX_AGE_SECONDS) return res.status(400).json({ error: 'ad_token_expired' });
@@ -124,7 +127,7 @@ export default async function handler(req, res) {
 
   // 📺 real ad proof from Adsgram's server (only when enabled): reserve one confirmed credit
   let credit = null;
-  if (adS2SOn()) {
+  if (net === 'adsgram' && adS2SOn()) {   // GigaPub has no server callback, only Adsgram can be proven
     credit = await takeAdCredit(db, tgId, startNum);
     if (!credit) return res.status(400).json({ error: 'ad_not_confirmed' });
   }
