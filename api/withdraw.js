@@ -20,6 +20,7 @@ import { trapHit, decoyFieldsIn } from '../lib/traps.js';
 import { humanNeeded } from '../lib/humanCheck.js';
 import { loadWdInfo, renderWdInfo, fmtBDFull } from '../lib/wdInfo.js';
 import { checkWithdrawBurst } from '../lib/wdBurst.js';
+import { canonicalTonAddress, tonAddressVariants } from '../lib/tonAddr.js';
 
 // ===== EDIT HERE =====
 const MIN_WITHDRAW_EG = 5000;          // $Devine  (100,000 $Devine = $1  →  5,000 $Devine = $0.05)
@@ -123,11 +124,16 @@ async function handleCreate(req, res, db) {
   else {
     address = String(req.body?.address || '').trim();
     if (!TON_ADDR_RE.test(address)) return res.status(400).json({ ok: false, error: 'invalid_address', message: 'Invalid TonKeeper address. It must start with UQ or EQ.' });
+    // FIX: verify the checksum and store ONE canonical spelling (UQ...), so the same wallet written as EQ... cannot be linked to a second account
+    const canon = canonicalTonAddress(address);
+    if (!canon) return res.status(400).json({ ok: false, error: 'invalid_address', message: 'This TonKeeper address is not valid (checksum failed). Copy it again from Tonkeeper.' });
+    address = canon;
   }
 
-  // one wallet = one account
-  const dupUser = await users.findOne({ telegramId: { $ne: tgId }, lockedWalletAddress: address }, { projection: { telegramId: 1 } });
-  const dupWd = dupUser ? null : await db.collection('withdrawals').findOne({ telegramId: { $ne: tgId }, address }, { projection: { telegramId: 1 } });
+  // one wallet = one account (checks EVERY spelling of the wallet: UQ... and EQ...)
+  const forms = tonAddressVariants(address).length ? tonAddressVariants(address) : [address];
+  const dupUser = await users.findOne({ telegramId: { $ne: tgId }, lockedWalletAddress: { $in: forms } }, { projection: { telegramId: 1 } });
+  const dupWd = dupUser ? null : await db.collection('withdrawals').findOne({ telegramId: { $ne: tgId }, address: { $in: forms } }, { projection: { telegramId: 1 } });
   if (dupUser || dupWd) {
     return res.status(403).json({ ok: false, error: 'wallet_in_use', message: 'This wallet is already linked to another account. One wallet can be used by one account only.' });
   }
@@ -202,7 +208,7 @@ async function handleCreate(req, res, db) {
       const prevRejected = await db.collection('withdrawals').countDocuments({ telegramId: tgId, status: 'rejected' });
       const wdi = (await loadWdInfo(db, [tgId])).get(tgId);
       const cyRep = await buildCycleReport(db, user).catch(() => null); // 📊 what they earned since the last approved withdraw
-      const sharedWith = (await db.collection('withdrawals').distinct('telegramId', { address, telegramId: { $ne: tgId } })).slice(0, 5);
+      const sharedWith = (await db.collection('withdrawals').distinct('telegramId', { address: { $in: forms }, telegramId: { $ne: tgId } })).slice(0, 5);
       const sent = await tgSend(ADMIN_ID,
         `💸 <b>New Withdraw Request ${wdNo(doc)}</b>\n\n` +
         `👤 <code>${tgId}</code>${user.username ? ' (@' + esc(user.username) + ')' : ''}\n` +
@@ -271,9 +277,11 @@ async function handleWalletChange(req, res, db, action) {
   // walletChangeApply
   if (user.walletChangeStatus !== 'approved') return res.status(403).json({ ok: false, error: 'wallet_change_not_approved', message: 'The admin has not approved a wallet change for you.' });
   if (user.withdrawPending) return res.status(409).json({ ok: false, error: 'withdraw_already_pending', message: 'Wait until your pending withdrawal is finished.' });
-  const address = String(req.body?.address || '').trim();
-  if (!TON_ADDR_RE.test(address)) return res.status(400).json({ ok: false, error: 'invalid_address', message: 'Invalid TonKeeper address. It must start with UQ or EQ.' });
-  const dup = await users.findOne({ telegramId: { $ne: tgId }, lockedWalletAddress: address }, { projection: { _id: 1 } });
+  const rawAddr = String(req.body?.address || '').trim();
+  if (!TON_ADDR_RE.test(rawAddr)) return res.status(400).json({ ok: false, error: 'invalid_address', message: 'Invalid TonKeeper address. It must start with UQ or EQ.' });
+  const address = canonicalTonAddress(rawAddr);   // FIX: checksum + one canonical spelling (see lib/tonAddr.js)
+  if (!address) return res.status(400).json({ ok: false, error: 'invalid_address', message: 'This TonKeeper address is not valid (checksum failed). Copy it again from Tonkeeper.' });
+  const dup = await users.findOne({ telegramId: { $ne: tgId }, lockedWalletAddress: { $in: tonAddressVariants(address) } }, { projection: { _id: 1 } });
   if (dup) return res.status(403).json({ ok: false, error: 'wallet_in_use', message: 'This wallet is already linked to another account.' });
   let done;
   try {
@@ -306,4 +314,4 @@ export default async function handler(req, res) {
     return handleCreate(req, res, db);
   }
   return res.status(405).json({ ok: false, error: 'method_not_allowed' });
-}
+          }
