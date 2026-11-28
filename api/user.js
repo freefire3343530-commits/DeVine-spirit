@@ -21,6 +21,13 @@ import { REF, refCheck } from '../lib/refReward.js';
 
 const MAX_IP_SWITCHES = 2;
 
+// FIX: the app never reads these, and some are private: multiAccountSiblings = Telegram ids of OTHER people, signupIp = the user's IP.
+// Before, GET/POST /api/user returned the whole document, so anyone could read their own fraud flags and the ids of the accounts linked to them.
+const PRIVATE_FIELDS = ['signupIp', 'ipFallbackFlag', 'multiAccountFlag', 'multiAccountSiblings', 'multiAccountFingerprint', 'multiAccountClearedAt', 'multiAccountClearedBy',
+  'accountLockedReason', 'accountLockedAt', 'botSuspectCount', 'botSuspectAt', 'botReviewAt', 'trapHits', 'trapLog', 'lastTrapAt', 'lastTrapAlertAt',
+  'humanNonces', 'humanLastNonce', 'humanFails', 'recentAdClaims', 'recentReferralSignups', 'refBonusGenerated', 'wdBurstFlag', 'wdBurstFlaggedAt', 'lastNotifiedDay', 'botBlocked', 'lastAdStartUsed'];
+const publicUser = (u) => { if (!u || typeof u !== 'object') return u; const o = { ...u }; for (const k of PRIVATE_FIELDS) delete o[k]; return o; };
+
 // Referral: referrer gets this many $Devine the moment a friend joins via their link.
 
 export default async function handler(req, res) {
@@ -90,7 +97,7 @@ export default async function handler(req, res) {
         { projection: { _id: 0 } }
       );
       if (!user) return res.status(404).json({ error: 'User not found' });
-      return res.status(200).json({ success: true, user });
+      return res.status(200).json({ success: true, user: publicUser(user) });
     }
 
     // ── POST /api/user  (register / app-open heartbeat) ───────────
@@ -130,7 +137,7 @@ export default async function handler(req, res) {
           { returnDocument: 'after' }
         );
         const userDoc = updated?.value || updated;
-        return res.status(200).json({ success: true, user: userDoc, isNew: false });
+        return res.status(200).json({ success: true, user: publicUser(userDoc), isNew: false });
       }
 
       // permanently banned Telegram IDs can never open a fresh account
@@ -191,7 +198,7 @@ export default async function handler(req, res) {
       } catch (e) {
         if (e?.code === 11000) {
           const again = await users.findOne({ telegramId: tgId });
-          return res.status(200).json({ success: true, user: again, isNew: false });
+          return res.status(200).json({ success: true, user: publicUser(again), isNew: false });
         }
         throw e;
       }
@@ -211,7 +218,7 @@ export default async function handler(req, res) {
       const devKey = registryKey(fp, clientIp);
       if (devKey && !devKey.startsWith('ip:')) { const c = await checkDevice(db, fp, clientIp, tgId); if (c.unclaimed) await claimDevice(db, devKey, tgId); }
       checkAndRecordFingerprint(db, tgId, fp).catch(() => {});
-      return res.status(200).json({ success: true, user: newUser, isNew: true });
+      return res.status(200).json({ success: true, user: publicUser(newUser), isNew: true });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
