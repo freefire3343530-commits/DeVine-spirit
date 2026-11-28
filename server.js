@@ -89,6 +89,7 @@ app.use((err, _req, res, _next) => {
   if (!res.headersSent) res.status(500).json({ error: 'Server error' });
 });
 
+if (allowed.length === 0) console.warn('⚠️  ALLOWED_ORIGIN is not set: ANY website may call this API from a browser. Set it to your frontend URL (e.g. https://de-vine-spirit.vercel.app).');
 if (!process.env.WEBHOOK_SECRET) console.warn('⚠️  WEBHOOK_SECRET is not set: the bot webhook rejects everything (fail-closed). Set it, then call /api/cron?job=setWebhook.');
 
 const port = process.env.PORT || 3000;
