@@ -160,7 +160,10 @@ export default async function handler(req, res) {
       );
       const updated = result?.value || result;
       if (!updated) {
-        await tasksCol.updateOne({ id: taskId }, { $inc: { completedCount: -1 }, $set: { active: true }, $unset: { completedAt: '' } }); // give the slot back
+        await tasksCol.updateOne({ id: taskId }, { $inc: { completedCount: -1 } }); // give the slot back
+        // FIX: re-open the task ONLY if it was closed automatically because it had become full (completedAt is set only then).
+        // Before, this always set active:true, which switched an admin-disabled / rejected task back ON after any failed claim.
+        await tasksCol.updateOne({ id: taskId, completedAt: { $exists: true }, maxCompletions: { $gt: 0 }, $expr: { $lt: ['$completedCount', '$maxCompletions'] } }, { $set: { active: true }, $unset: { completedAt: '' } });
         return res.status(400).json({ error: 'Task already completed.' });
       }
 
